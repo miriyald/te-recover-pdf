@@ -3,9 +3,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pymupdf
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 
-from anu_unicode.shape_naming.atlas import GlyphStats
+from anu_unicode.shape_naming.atlas import EmbeddedFonts, GlyphStats, trim_to_ink
 
 ROW_HEIGHT = 120
 SHEET_WIDTH = 1600
@@ -14,30 +14,30 @@ WORD_SIZE = 40
 SHEET_DPI = 110
 MAX_IMAGE_WIDTH = 360
 GAP = 26
+PADDING = 6
 RED = (1, 0, 0)
 
 logger = logging.getLogger(__name__)
 
 
-def render_highlighted(fonts: Sequence[pymupdf.Font], text: str, target: str, size: float = WORD_SIZE) -> Image.Image | None:
-    font = next((candidate for candidate in fonts if all(candidate.has_glyph(ord(char)) for char in text)), None)
-    if font is None:
+def render_highlighted(fonts: EmbeddedFonts, text: str, target: str, size: float = WORD_SIZE) -> Image.Image | None:
+    found = fonts.drawable(text)
+    if found is None:
         return None
+    font, form = found
     with pymupdf.open() as scratch:
-        page = scratch.new_page(width=font.text_length(text, fontsize=size) + 2 * size, height=size * 2)
+        page = scratch.new_page(width=font.text_length(form, fontsize=size) + 2 * size, height=size * 2)
         plain, highlight = pymupdf.TextWriter(page.rect), pymupdf.TextWriter(page.rect, color=RED)
         x = size
-        for char in text:
-            (highlight if char == target else plain).append((x, size * 1.4), char, font=font, fontsize=size)
-            x += font.text_length(char, fontsize=size)
+        for char, drawn in zip(text, form, strict=True):
+            (highlight if char == target else plain).append((x, size * 1.4), drawn, font=font, fontsize=size)
+            x += font.text_length(drawn, fontsize=size)
         plain.write_text(page)
         highlight.write_text(page, color=RED)
-        image: Image.Image = page.get_pixmap(dpi=SHEET_DPI, alpha=False).pil_image()
-    ink = ImageOps.invert(image.convert("L")).getbbox()
-    return image.crop((max(0, ink[0] - 6), 0, min(image.width, ink[2] + 6), image.height)) if ink else image
+        return trim_to_ink(page.get_pixmap(dpi=SHEET_DPI, alpha=False).pil_image(), PADDING)
 
 
-def _row(sheet: Image.Image, top: int, number: int, stats: GlyphStats, fonts: Sequence[pymupdf.Font]) -> None:
+def _row(sheet: Image.Image, top: int, number: int, stats: GlyphStats, fonts: EmbeddedFonts) -> None:
     draw = ImageDraw.Draw(sheet)
     label = ImageFont.load_default(15)
     draw.text((6, top + 8), f"#{number} U+{ord(stats.glyph):04X}", fill="black", font=label)
@@ -55,7 +55,7 @@ def _row(sheet: Image.Image, top: int, number: int, stats: GlyphStats, fonts: Se
     draw.line((0, top + ROW_HEIGHT - 1, SHEET_WIDTH, top + ROW_HEIGHT - 1), fill="#bbbbbb")
 
 
-def write_sheets(out: Path, stats: Sequence[GlyphStats], fonts: Sequence[pymupdf.Font], per_sheet: int) -> list[Path]:
+def write_sheets(out: Path, stats: Sequence[GlyphStats], fonts: EmbeddedFonts, per_sheet: int) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     paths = []
     for index, start in enumerate(range(0, len(stats), per_sheet), 1):

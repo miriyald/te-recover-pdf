@@ -47,7 +47,7 @@ flowchart TB
 - Tests: `tests/unit/ocr_learning/`, `tests/unit/shape_naming/`; core tests stay in `tests/unit/`.
 
 ### Data layout: mappings belong to a font encoding, and each approach has its own gold
-A mapping only means something for one font **encoding**. The six fonts in Mahabharatamu (Priyaanka, PriyaankaBold, PallaviBold, Pragathi, Prabhava, Kranthi) share the Anu encoding; Vol 3 adds Gowthami and Dharani, which may not.
+A mapping only means something for one font **encoding**. The six fonts in Mahabharatamu (Priyaanka, PriyaankaBold, PallaviBold, Pragathi, Prabhava, Kranthi) share the Anu encoding; so do Vol 3's Gowthami, Anupama and Dharani (see `docs/specs/vol3-sabha-parvam/design.md`).
 Today the only link is `FontProfile.anu_fonts` → `Glyph.is_anu`, and one global `mappings/mapping.tsv` serves every Anu glyph. Book-run state sits next to the font's gold mapping.
 
 The two processes each produced a **gold** artifact for the Anu encoding, and both are kept:
@@ -80,7 +80,7 @@ flowchart LR
 - `compare` stays symmetric: it diffs any two mappings. It is the cross-check between the two golds.
 - The generated `shape-naming/mapping.tsv` is git-ignored and rebuilt by `shapes`. The currently committed `shapes/mapping.tsv` is removed from git.
 
-**Follow-up (needed for Vol 3, not part of this refactor):** for books that mix encodings, `Glyph.is_anu` becomes `Glyph.encoding` (looked up from each font's family via the profiles), and `convert_line` splits runs by encoding and picks that encoding's mapping. Behaviour for single-encoding books like Mahabharatamu is unchanged.
+**Follow-up, if a book ever mixes encodings:** `Glyph.is_anu` becomes `Glyph.encoding` (looked up from each font's family via the profiles), and `convert_line` splits runs by encoding and picks that encoding's mapping. Vol 3 turned out not to need this: its Telugu fonts are all the Anu encoding, stored as U+F000 + byte (`docs/specs/vol3-sabha-parvam/`).
 
 ### Dependency fix
 `compare.py` (approach 2) imports `learn.Occurrence` and `report._crop/_table/_glyphs/_telugu/STYLE` (approach 1).

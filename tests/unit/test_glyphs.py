@@ -1,7 +1,8 @@
 from typing import Any
 from unittest.mock import MagicMock
 
-from anu_unicode.glyphs import Glyph, Word, page_lines, split_words
+from anu_unicode.glyphs import Glyph, Word, font_family, page_lines, split_words, symbol_text
+from anu_unicode.profile import DEFAULT_PROFILE
 
 
 def _glyph(char: str, x0: float, width: float, is_anu: bool = True) -> Glyph:
@@ -47,6 +48,27 @@ def test_page_lines_merges_pieces_on_same_baseline_in_x_order() -> None:
 
     assert ["".join(glyph.char for glyph in line) for line in lines] == ["=∞ 29", "x"]
     assert lines[0][0].is_anu and not lines[1][0].is_anu
+
+
+def test_symbol_font_codes_become_anu_chars_in_anu_fonts_and_plain_bytes_elsewhere() -> None:
+    page = MagicMock()
+    page.get_text.return_value = {"blocks": [{"lines": [
+        _line("ABCDEF+GowthamiThin", [_char("\uf03d", 80, 6, 100.0), _char("\uf0b0", 86, 3, 100.0), _char("\uf0c6", 89, 0, 100.0)]),
+        _line("ABCDEF+TeluguNumbersBold", [_char("\uf02d", 80, 6, 120.0)]),
+    ]}]}
+
+    lines = page_lines(page)
+
+    assert ["".join(glyph.char for glyph in line) for line in lines] == ["=∞Δ", "-"]
+
+
+def test_style_suffix_does_not_hide_an_anu_family() -> None:
+    assert font_family("ABCDEF+Priyaanka,Italic") == "Priyaanka"
+
+
+def test_symbol_text_gives_the_codes_a_symbol_font_draws() -> None:
+    assert symbol_text("=∞Δ", DEFAULT_PROFILE) == "\uf03d\uf0b0\uf0c6"
+    assert symbol_text("=క", DEFAULT_PROFILE) is None
 
 
 def test_page_lines_corrects_anu_vertical_extent_around_baseline() -> None:

@@ -13,7 +13,7 @@ Decisions taken:
 
 Environment: Tesseract 5.4 with `tel` at `C:\Users\miriyald\AppData\Local\Programs\Tesseract-OCR\tesseract.exe` (pass `--tesseract` or set `TESSERACT_CMD`).
 
-Out of scope here: label transfer to *Maha Bharatham Vol 3 Sabha Parvam* (same Priyaanka/Kranthi/Prabhava fonts plus new Gowthami/Dharani) by outline matching, which would leak the answer in a blind run; scanned PDFs (glyph-id clustering POC); a lexicon check.
+Out of scope here: label transfer to *Maha Bharatham Vol 3 Sabha Parvam* (same Anu encoding as U+F000 + byte; Gowthami/Anupama/Dharani are new designs of it, see `docs/specs/vol3-sabha-parvam/`) by outline matching, which would leak the answer in a blind run; scanned PDFs (glyph-id clustering POC); a lexicon check.
 
 ```mermaid
 flowchart TD

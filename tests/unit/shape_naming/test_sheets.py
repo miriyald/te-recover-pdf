@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.shape_naming.atlas import GlyphStats
+from anu_unicode.shape_naming.atlas import EmbeddedFonts, GlyphStats
 from anu_unicode.shape_naming.sheets import render_highlighted, write_sheets
 
-FONTS = [pymupdf.Font("helv")]
+FONTS = EmbeddedFonts((pymupdf.Font("helv"),))
 
 
 def _has_red(image_bytes: Path) -> bool:

@@ -1,5 +1,15 @@
 {
   "anu_fonts": [
+    "AnupamaBold",
+    "AnupamaExtraBold",
+    "AnupamaMedium",
+    "Brahma",
+    "Dharani",
+    "GowthamiBlack",
+    "GowthamiBold",
+    "GowthamiExtraBold",
+    "GowthamiMedium",
+    "GowthamiThin",
     "Kranthi",
     "PallaviBold",
     "Prabhava",
@@ -8,5 +18,11 @@
     "PriyaankaBold"
   ],
   "ascent": 0.75,
-  "descent": 0.35
+  "descent": 0.35,
+  "byte_encoding": "mac_roman",
+  "byte_overrides": {
+    "C6": "Δ",
+    "D0": "-",
+    "DB": "¤"
+  }
 }

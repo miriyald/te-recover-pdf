@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,8 @@ from anu_unicode.profile import DEFAULT_PROFILE, FontProfile
 
 BASELINE_TOLERANCE = 2.0
 ZERO_WIDTH = 0.5
+SYMBOL_BASE = 0xF000
+SYMBOL_CODES = range(0xF020, 0xF100)
 
 Rect = tuple[float, float, float, float]
 
@@ -52,7 +55,16 @@ class Word:
 
 
 def font_family(font_name: str) -> str:
-    return font_name.split("+")[-1]
+    return font_name.split("+")[-1].split(",")[0]
+
+
+def _char(char: str, decode: Callable[[int], str]) -> str:
+    return decode(ord(char) - SYMBOL_BASE) if ord(char) in SYMBOL_CODES else char
+
+
+def symbol_text(text: str, profile: FontProfile) -> str | None:
+    codes = [profile.char_byte(char) for char in text]
+    return None if None in codes else "".join(chr(SYMBOL_BASE + code) for code in codes if code is not None)
 
 
 def _anu_bbox(char: dict[str, Any], size: float, profile: FontProfile) -> Rect:
@@ -62,8 +74,9 @@ def _anu_bbox(char: dict[str, Any], size: float, profile: FontProfile) -> Rect:
 
 def _span_glyphs(span: dict[str, Any], profile: FontProfile) -> list[Glyph]:
     if font_family(span["font"]) not in profile.anu_fonts:
-        return [Glyph(char["c"], tuple(char["bbox"]), char["origin"][0], is_anu=False) for char in span["chars"]]
-    return [Glyph(char["c"], _anu_bbox(char, span["size"], profile), char["origin"][0], is_anu=True) for char in span["chars"]]
+        return [Glyph(_char(char["c"], chr), tuple(char["bbox"]), char["origin"][0], is_anu=False) for char in span["chars"]]
+    return [Glyph(_char(char["c"], profile.byte_char), _anu_bbox(char, span["size"], profile), char["origin"][0], is_anu=True)
+            for char in span["chars"]]
 
 
 def page_lines(page: pymupdf.Page, profile: FontProfile = DEFAULT_PROFILE) -> list[list[Glyph]]:

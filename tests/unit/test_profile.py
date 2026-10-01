@@ -35,5 +35,22 @@ def test_profile_decides_which_fonts_are_telugu_and_how_tall_their_boxes_are() -
 
 
 def test_default_profile_is_the_anu_family() -> None:
-    assert "Priyaanka" in DEFAULT_PROFILE.anu_fonts
+    assert {"Priyaanka", "GowthamiThin", "AnupamaMedium"} <= DEFAULT_PROFILE.anu_fonts
     assert page_lines(_page("ABCDEF+Priyaanka"))[0][0].is_anu
+
+
+def test_byte_decoding_round_trips_through_json(tmp_path: Path) -> None:
+    path = tmp_path / "profile.json"
+    profile = FontProfile(frozenset({"Foo"}), 0.7, 0.3, byte_encoding="mac_roman", byte_overrides={0xC6: "Δ"})
+
+    save_profile(path, profile)
+
+    assert load_profile(path) == profile
+
+
+def test_anu_bytes_decode_as_mac_roman_except_the_overrides() -> None:
+    assert [DEFAULT_PROFILE.byte_char(byte) for byte in (0x3D, 0xB0, 0xC6, 0xD0, 0xDB)] == ["=", "∞", "Δ", "-", "¤"]
+
+
+def test_char_byte_inverts_byte_char() -> None:
+    assert [DEFAULT_PROFILE.char_byte(char) for char in ("=", "∞", "Δ", "-", "క")] == [0x3D, 0xB0, 0xC6, 0xD0, None]

@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
-from PIL import ImageOps
+from PIL import Image, ImageOps
 
-from anu_unicode.glyphs import ZERO_WIDTH, Word, font_family, page_lines, split_words
-from anu_unicode.profile import FontProfile
+from anu_unicode.glyphs import ZERO_WIDTH, Word, font_family, page_lines, split_words, symbol_text
+from anu_unicode.profile import DEFAULT_PROFILE, FontProfile
 from anu_unicode.shape_naming.shapes import Shape
 
 GLYPH_SIZE = 44
@@ -81,39 +81,48 @@ def collect_glyphs(document: pymupdf.Document, profile: FontProfile, examples_pe
     return glyph_stats(words, examples_per_glyph)
 
 
-def load_fonts(document: pymupdf.Document, profile: FontProfile) -> list[pymupdf.Font]:
+@dataclass(frozen=True)
+class EmbeddedFonts:
+    fonts: tuple[pymupdf.Font, ...]
+    profile: FontProfile = DEFAULT_PROFILE
+
+    def drawable(self, text: str) -> tuple[pymupdf.Font, str] | None:
+        forms = [form for form in (text, symbol_text(text, self.profile)) if form]
+        return next(((font, form) for font in self.fonts for form in forms if all(font.has_glyph(ord(char)) for char in form)), None)
+
+
+def load_fonts(document: pymupdf.Document, profile: FontProfile) -> EmbeddedFonts:
     pages: Counter[int] = Counter()
     for page in document:
         for font in page.get_fonts():
             if font_family(font[3]) in profile.anu_fonts:
                 pages[font[0]] += 1
-    fonts = []
-    for xref, _ in pages.most_common():
-        buffer = document.extract_font(xref)[3]
-        if buffer:
-            fonts.append(pymupdf.Font(fontbuffer=buffer))
-    return fonts
+    buffers = (document.extract_font(xref)[3] for xref, _ in pages.most_common())
+    return EmbeddedFonts(tuple(pymupdf.Font(fontbuffer=buffer) for buffer in buffers if buffer), profile)
 
 
-def render_png(fonts: Sequence[pymupdf.Font], text: str, size: float) -> bytes | None:
-    font = next((candidate for candidate in fonts if all(candidate.has_glyph(ord(char)) for char in text)), None)
-    if font is None:
-        return None
-    with pymupdf.open() as scratch:
-        page = scratch.new_page(width=font.text_length(text, fontsize=size) + 2 * size, height=size * 2)
-        writer = pymupdf.TextWriter(page.rect)
-        writer.append((size, size * 1.4), text, font=font, fontsize=size)
-        writer.write_text(page)
-        image = page.get_pixmap(dpi=RENDER_DPI, alpha=False).pil_image()
+def trim_to_ink(image: Image.Image, padding: int) -> Image.Image:
     ink = ImageOps.invert(image.convert("L")).getbbox()
-    if ink:
-        image = image.crop((max(0, ink[0] - PADDING), 0, min(image.width, ink[2] + PADDING), image.height))
+    return image.crop((max(0, ink[0] - padding), 0, min(image.width, ink[2] + padding), image.height)) if ink else image
+
+
+def render_png(fonts: EmbeddedFonts, text: str, size: float) -> bytes | None:
+    found = fonts.drawable(text)
+    if found is None:
+        return None
+    font, form = found
+    with pymupdf.open() as scratch:
+        page = scratch.new_page(width=font.text_length(form, fontsize=size) + 2 * size, height=size * 2)
+        writer = pymupdf.TextWriter(page.rect)
+        writer.append((size, size * 1.4), form, font=font, fontsize=size)
+        writer.write_text(page)
+        image = trim_to_ink(page.get_pixmap(dpi=RENDER_DPI, alpha=False).pil_image(), PADDING)
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
-def _image(fonts: Sequence[pymupdf.Font], text: str, size: float) -> str:
+def _image(fonts: EmbeddedFonts, text: str, size: float) -> str:
     data = render_png(fonts, text, size)
     return f"<img src='data:image/png;base64,{base64.b64encode(data).decode('ascii')}'>" if data else "<i>not in font</i>"
 
@@ -122,7 +131,7 @@ def _input(css_class: str, value: str) -> str:
     return f"<input class={css_class} value=\"{html.escape(value, quote=True)}\">"
 
 
-def _row(stats: GlyphStats, fonts: Sequence[pymupdf.Font], shape: Shape | None) -> str:
+def _row(stats: GlyphStats, fonts: EmbeddedFonts, shape: Shape | None) -> str:
     units = "".join(f"<div>{_image(fonts, unit, WORD_SIZE)}</div>" for unit in stats.units)
     words = "".join(f"<div>{_image(fonts, text, WORD_SIZE)}</div>" for text in stats.words)
     return (
@@ -133,7 +142,7 @@ def _row(stats: GlyphStats, fonts: Sequence[pymupdf.Font], shape: Shape | None) 
     )
 
 
-def write_atlas(path: Path, stats: Sequence[GlyphStats], shapes: Mapping[str, Shape], fonts: Sequence[pymupdf.Font]) -> None:
+def write_atlas(path: Path, stats: Sequence[GlyphStats], shapes: Mapping[str, Shape], fonts: EmbeddedFonts) -> None:
     rows = "".join(_row(item, fonts, shapes.get(item.glyph)) for item in stats)
     named = sum(item.glyph in shapes for item in stats)
     export = (
