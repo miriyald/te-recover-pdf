@@ -2,45 +2,30 @@ import argparse
 import logging
 import os
 import re
-from collections import Counter
-from collections.abc import Iterable
-from dataclasses import replace
 from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.convert import UNMAPPED_OPEN, Coverage, convert_anu, convert_page, convert_segments, render
+from anu_unicode.command_support import MATCH_OVERLAP, cached_pages, page_range, requested_pages
+from anu_unicode.convert import Coverage, convert_anu, convert_page
 from anu_unicode.glyphs import page_lines, split_words
-from anu_unicode.mapping import (
-    Suspicion,
-    append_progress,
-    apply_accepted,
-    load_entries,
-    load_mapping,
-    load_pending,
-    load_suspicions,
-    processed_pages,
-    save_entries,
-    save_pending,
-)
+from anu_unicode.mapping import load_mapping
 from anu_unicode.ocr import OcrCache
-from anu_unicode.ocr_learning.approve import approve_batch, batch_pages
-from anu_unicode.ocr_learning.confirm import ConfirmationResult, apply_confirmations, parse_confirmations
-from anu_unicode.ocr_learning.learn import LearningState, Occurrence, PageResult, review_page, run_batch
-from anu_unicode.ocr_learning.report import BatchReport, SuspiciousRow, write_batch_report
+from anu_unicode.ocr_learning import commands as ocr_learning
 from anu_unicode.probe import SAMPLE_PAGES, probe_document
-from anu_unicode.profile import DEFAULT_PROFILE, FontProfile, load_profile, save_profile
+from anu_unicode.profile import DEFAULT_PROFILE, load_profile, save_profile
 from anu_unicode.quality import GroundTruthQuality, PageQuality, compare_words, ground_truth_quality, page_quality
 from anu_unicode.quality_report import QualityReport, write_quality_report
-from anu_unicode.shape_naming.atlas import collect_glyphs, load_fonts, write_atlas
-from anu_unicode.shape_naming.compare import compare, page_words, write_comparison
-from anu_unicode.shape_naming.shapes import ShapeError, compile_mapping, load_recipes, load_shapes
+from anu_unicode.shape_naming import commands as shape_naming
 
 logger = logging.getLogger(__name__)
-MATCH_OVERLAP = 0.3
 FONTS = Path("fonts")
 BOOKS = Path("books")
 STANDARD_RECORD_FIELDS = frozenset(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
+DESCRIPTION = (
+    "Convert Anu-font Telugu PDFs to Unicode. Approach 1 (OCR learning) grows a stack mapping from word OCR; "
+    "approach 2 (shape naming) names each glyph code by its shape and compiles recipes. Both share convert, quality and probe."
+)
 
 
 class ExtraFormatter(logging.Formatter):
@@ -49,123 +34,24 @@ class ExtraFormatter(logging.Formatter):
         return f"{super().format(record)} {extra}" if extra else super().format(record)
 
 
-def page_range(text: str) -> list[int]:
-    first, _, last = text.partition("-")
-    return list(range(int(first), int(last or first) + 1))
+def book_slug(pdf: Path) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", pdf.stem.lower()).strip("-")
 
 
-def _write_page(out: Path, document: pymupdf.Document, number: int, mapping: dict[str, str], profile: FontProfile) -> None:
-    text = convert_page(document[number - 1], mapping, Coverage(), profile)
-    (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
-
-
-def _suspicious(document: pymupdf.Document, pages: Iterable[int], state: LearningState,
-                suspicions: Iterable[Suspicion]) -> list[SuspiciousRow]:
-    entries = state.entries
-    mapping = state.mapping
-    words = [(number, word) for number in pages for line in page_lines(document[number - 1], state.profile) for word in split_words(line)]
-    rows: list[SuspiciousRow] = []
-    for suspicion in suspicions:
-        occurrences = [
-            Occurrence(number, word.bbox, word.text, render(segments, Coverage()), "")
-            for number, word in words
-            for segments in [convert_segments(word.text, mapping)]
-            if any(glyphs == suspicion.glyphs for glyphs, _ in segments)
-        ]
-        current = entries[suspicion.glyphs].unicode if suspicion.glyphs in entries else ""
-        rows.append((suspicion, current, occurrences))
-    return rows
-
-
-def _still_unresolved(occurrences: Iterable[Occurrence], mapping: dict[str, str]) -> list[Occurrence]:
-    current = [replace(item, converted=render(convert_segments(item.glyphs, mapping), Coverage())) for item in occurrences]
-    return [item for item in current if UNMAPPED_OPEN in item.converted]
-
-
-def _learn(arguments: argparse.Namespace) -> None:
-    document = pymupdf.open(arguments.pdf)
-    state = LearningState(load_entries(arguments.mapping), load_pending(arguments.pending), arguments.profile)
-    end = min(arguments.end or document.page_count, document.page_count)
-    done = processed_pages(arguments.progress)
-    numbers = [number for number in range(arguments.start, end + 1) if number not in done]
-    if not numbers:
-        logger.info("nothing to learn", extra={"start": arguments.start, "end": end})
-        return
-    start = numbers[0]
-    out = arguments.out / f"batch-{start}"
-    out.mkdir(parents=True, exist_ok=True)
-
-    def checkpoint(result: PageResult) -> None:
-        save_entries(arguments.mapping, state.entries)
-        save_pending(arguments.pending, state.pending)
-        append_progress(arguments.progress, result.progress)
-        _write_page(out, document, result.progress.page, state.mapping, state.profile)
-
-    results = run_batch(
-        (document[number - 1] for number in numbers),
-        state,
-        arguments.ocr,
-        arguments.stop_after,
-        checkpoint,
-    )
-    learned_pages = [result.progress.page for result in results]
-    for result in results:
-        _write_page(out, document, result.progress.page, state.mapping, state.profile)
-        result.unresolved = _still_unresolved(result.unresolved, state.mapping)
-    suspicious = _suspicious(document, learned_pages, state, load_suspicions(arguments.suspicious))
-    write_batch_report(out / "report.html", BatchReport(results, state.pending, suspicious=suspicious), document)
-    logger.info("batch done", extra={
-        "pages": f"{start}-{results[-1].progress.page}" if results else "none",
-        "new_entries": sum(len(result.accepted) for result in results),
-        "pending": len(state.pending),
-        "ocr_calls": arguments.ocr.calls,
-        "ocr_cache_hits": arguments.ocr.hits,
-        "report": str(out / "report.html"),
-    })
-
-
-def _rebuild_pages(arguments: argparse.Namespace, document: pymupdf.Document, state: LearningState,
-                   confirmation_results: Iterable[ConfirmationResult]) -> list[PageResult]:
-    batch = arguments.out / f"batch-{arguments.batch}"
-    confirmed_text = {result.confirmation.correct for result in confirmation_results if result.status in ("added", "already correct")}
-    results = []
-    for number in batch_pages(batch):
-        _write_page(batch, document, number, state.mapping, state.profile)
-        page_result = review_page(document[number - 1], state.entries, arguments.ocr, state.profile)
-        page_result.suspects = [item for item in page_result.suspects if item.converted not in confirmed_text]
-        results.append(page_result)
-    return results
-
-
-def _confirm(arguments: argparse.Namespace) -> None:
-    document = pymupdf.open(arguments.pdf)
-    batch = arguments.out / f"batch-{arguments.batch}"
-    pages = batch_pages(batch)
-    state = LearningState(load_entries(arguments.mapping), load_pending(arguments.pending), arguments.profile)
-    reviewed_mapping = state.mapping
-    suspicions = load_suspicions(arguments.suspicious)
-    logger.info("suspicious mappings applied", extra={"changes": apply_accepted(state.entries, suspicions)})
-    words = [(number, word) for number in pages for line in page_lines(document[number - 1], state.profile) for word in split_words(line)]
-    file = arguments.file or batch / "confirmations.tsv"
-    confirmation_results = apply_confirmations(parse_confirmations(file.read_text(encoding="utf-8")), words, state, reviewed_mapping)
-    save_entries(arguments.mapping, state.entries)
-    save_pending(arguments.pending, state.pending)
-    for result in confirmation_results:
-        logger.info("confirmation", extra={"shown": result.confirmation.shown, "correct": result.confirmation.correct,
-                                           "status": result.status, "added": [(e.glyphs, e.unicode) for e in result.added],
-                                           "overrides": result.overrides})
-    results = _rebuild_pages(arguments, document, state, confirmation_results)
-    report = BatchReport(results, state.pending, confirmation_results, _suspicious(document, pages, state, suspicions))
-    write_batch_report(batch / "report.html", report, document)
-    logger.info("batch rebuilt", extra={"batch": arguments.batch, "pages": len(pages),
-                                        "unresolved": sum(len(result.unresolved) for result in results),
-                                        "ocr_calls": arguments.ocr.calls, "ocr_cache_hits": arguments.ocr.hits,
-                                        "report": str(batch / "report.html")})
-
-
-def _approve(arguments: argparse.Namespace) -> None:
-    pages = approve_batch(arguments.out / f"batch-{arguments.batch}", arguments.verified, arguments.archive / "batches")
-    logger.info("batch approved", extra={"batch": arguments.batch, "pages": pages, "verified": str(arguments.verified)})
+def resolve_paths(arguments: argparse.Namespace) -> None:
+    font, book = FONTS / arguments.font, BOOKS / book_slug(arguments.pdf)
+    shape_naming_dir = font / "shape-naming"
+    defaults = {
+        "profile": font / "profile.json", "mapping": font / "ocr-learning" / "mapping.tsv",
+        "pending": book / "pending.tsv", "progress": book / "progress.tsv", "suspicious": book / "suspicious.tsv",
+        "ocr_cache": book / "ocr-cache", "verified": book / "verified",
+        "names": shape_naming_dir / "names.tsv", "recipes": shape_naming_dir / "recipes.tsv", "candidate": shape_naming_dir / "mapping.tsv",
+    }
+    if arguments.command == "shapes":
+        defaults["write"] = shape_naming_dir / "mapping.tsv"
+    for name, path in defaults.items():
+        if getattr(arguments, name, path) is None:
+            setattr(arguments, name, path)
 
 
 def _convert(arguments: argparse.Namespace) -> None:
@@ -203,19 +89,11 @@ def _measure_ground_truth(document: pymupdf.Document, path: Path, mapping: dict[
     return ground_truth_quality(number, reference, convert_page(page, mapping, Coverage(), arguments.profile), ocr_text)
 
 
-def _requested_pages(arguments: argparse.Namespace, document: pymupdf.Document) -> list[int]:
-    return arguments.pages or list(range(1, document.page_count + 1))
-
-
-def _cached_pages(arguments: argparse.Namespace) -> set[int]:
-    return {int(path.stem.split("-")[1]) for path in arguments.ocr_cache.glob("page-*.json")}
-
-
 def _quality(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
     mapping = load_mapping(arguments.mapping)
-    cached = _cached_pages(arguments)
-    numbers = [number for number in _requested_pages(arguments, document) if arguments.ocr_missing or number in cached]
+    cached = cached_pages(arguments.ocr_cache)
+    numbers = [number for number in requested_pages(arguments, document) if arguments.ocr_missing or number in cached]
     pages = [_measure_page(document, number, mapping, arguments) for number in numbers]
     verified = sorted(arguments.verified.glob("page-*.unicode.txt"))
     ground_truth = [_measure_ground_truth(document, path, mapping, arguments) for path in verified]
@@ -223,43 +101,6 @@ def _quality(arguments: argparse.Namespace) -> None:
     write_quality_report(out, QualityReport(arguments.pdf.name, document.page_count, pages, ground_truth))
     logger.info("quality report written", extra={"pages": len(pages), "verified_pages": len(ground_truth), "report": str(out / "report.md"),
                                                  "ocr_calls": arguments.ocr.calls})
-
-
-def _atlas(arguments: argparse.Namespace) -> None:
-    document = pymupdf.open(arguments.pdf)
-    arguments.out.mkdir(parents=True, exist_ok=True)
-    shapes = {shape.glyph: shape for shape in load_shapes(arguments.names)}
-    write_atlas(arguments.out / "atlas.html", collect_glyphs(document, arguments.profile), shapes, load_fonts(document, arguments.profile))
-
-
-def _shapes(arguments: argparse.Namespace) -> None:
-    shapes = load_shapes(arguments.names)
-    recipes = load_recipes(arguments.recipes)
-    try:
-        entries = compile_mapping(shapes, recipes)
-    except ShapeError as error:
-        logger.error("shapes do not compile", extra={"error": str(error)})
-        raise SystemExit(1) from error
-    save_entries(arguments.write, entries)
-    logger.info("shapes compiled", extra={"names": len(shapes), "recipes": len(recipes), "entries": len(entries),
-                                          "path": str(arguments.write)})
-
-
-def _compare(arguments: argparse.Namespace) -> None:
-    document = pymupdf.open(arguments.pdf)
-    cached = _cached_pages(arguments)
-    words = []
-    for number in _requested_pages(arguments, document):
-        page = document[number - 1]
-        ocr = arguments.ocr(page) if arguments.ocr_missing or number in cached else None
-        words.extend(page_words(page, arguments.profile, ocr, MATCH_OVERLAP))
-    comparison = compare(words, load_mapping(arguments.candidate), load_mapping(arguments.mapping))
-    out = arguments.out / "shapes-validation"
-    write_comparison(out, comparison, document)
-    verdicts = Counter(item.verdict for item in comparison.differences)
-    logger.info("comparison written", extra={"words": comparison.words, "groups": len(comparison.differences), "verdicts": dict(verdicts),
-                                             "candidate_coverage": round(comparison.candidate_coverage.ratio, 4),
-                                             "report": str(out / "report.html"), "ocr_calls": arguments.ocr.calls})
 
 
 def _probe(arguments: argparse.Namespace) -> None:
@@ -275,44 +116,23 @@ def _probe(arguments: argparse.Namespace) -> None:
         logger.info("profile written", extra={"path": str(arguments.write)})
 
 
-def book_slug(pdf: Path) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", pdf.stem.lower()).strip("-")
-
-
-def resolve_paths(arguments: argparse.Namespace) -> None:
-    font, book = FONTS / arguments.font, BOOKS / book_slug(arguments.pdf)
-    shape_naming = font / "shape-naming"
-    defaults = {
-        "profile": font / "profile.json", "mapping": font / "ocr-learning" / "mapping.tsv",
-        "pending": book / "pending.tsv", "progress": book / "progress.tsv", "suspicious": book / "suspicious.tsv",
-        "ocr_cache": book / "ocr-cache", "verified": book / "verified",
-        "names": shape_naming / "names.tsv", "recipes": shape_naming / "recipes.tsv", "candidate": shape_naming / "mapping.tsv",
-    }
-    if arguments.command == "shapes":
-        defaults["write"] = shape_naming / "mapping.tsv"
-    for name, path in defaults.items():
-        if getattr(arguments, name, path) is None:
-            setattr(arguments, name, path)
-
-
-def _add_shape_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    atlas = commands.add_parser("atlas", help="labelling sheet: every glyph code drawn from the embedded font, most frequent first")
-    atlas.add_argument("--names", type=Path, help="shape names to pre-fill; default fonts/<font>/shape-naming/names.tsv")
-    atlas.set_defaults(handler=_atlas)
-    shapes = commands.add_parser("shapes", help="compile shape names and recipes into a mapping file")
-    shapes.add_argument("--names", type=Path, help="default fonts/<font>/shape-naming/names.tsv")
-    shapes.add_argument("--recipes", type=Path, help="default fonts/<font>/shape-naming/recipes.tsv")
-    shapes.add_argument("--write", type=Path, help="default fonts/<font>/shape-naming/mapping.tsv")
-    shapes.set_defaults(handler=_shapes)
-    compare_command = commands.add_parser("compare", help="diff a candidate mapping against --mapping word by word, with OCR votes")
-    compare_command.add_argument("--candidate", type=Path, help="default fonts/<font>/shape-naming/mapping.tsv")
-    compare_command.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
-    compare_command.add_argument("--ocr-missing", action="store_true", help="run Tesseract on pages that have no cached OCR (slow)")
-    compare_command.set_defaults(handler=_compare)
+def _add_core_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    convert = commands.add_parser("convert", help="convert pages with --mapping")
+    convert.add_argument("--pages", type=page_range, required=True, help="1-based, e.g. 6-10")
+    convert.set_defaults(handler=_convert)
+    quality = commands.add_parser("quality", help="report where Tesseract and the conversion disagree, and accuracy against verified/")
+    quality.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
+    quality.add_argument("--ocr-missing", action="store_true", help="run Tesseract on requested pages that have no cached OCR (slow)")
+    quality.add_argument("--verified", type=Path, help="default books/<book>/verified")
+    quality.set_defaults(handler=_quality)
+    probe = commands.add_parser("probe", help="inspect a PDF's fonts and propose a font profile")
+    probe.add_argument("--pages", type=page_range, help="1-based sample pages; default ~10 spread across the PDF")
+    probe.add_argument("--write", type=Path, help="write the proposed profile JSON here")
+    probe.set_defaults(handler=_probe)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="anu-unicode")
+    parser = argparse.ArgumentParser(prog="anu-unicode", description=DESCRIPTION)
     parser.add_argument("--font", default="anu", help="font encoding folder under fonts/ holding the profile and both approaches' gold")
     parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
     parser.add_argument("--profile", type=Path, help="font profile JSON (see the probe command); default fonts/<font>/profile.json")
@@ -324,33 +144,9 @@ def main() -> None:
     parser.add_argument("--ocr-cache", type=Path, help="default books/<book>/ocr-cache")
     parser.add_argument("--tesseract", default=os.environ.get("TESSERACT_CMD", "tesseract"))
     commands = parser.add_subparsers(dest="command", required=True)
-    learn = commands.add_parser("learn", help="walk pages, OCR only unmapped glyphs, extend the mapping")
-    learn.add_argument("--stop-after", type=int, required=True, help="stop after the page on which X new entries are reached")
-    learn.add_argument("--start", type=int, default=1, help="1-based first page; pages in progress.tsv are skipped")
-    learn.add_argument("--end", type=int, help="1-based last page; default last page of the PDF")
-    learn.set_defaults(handler=_learn)
-    confirm = commands.add_parser("confirm", help="apply human-confirmed words to the mapping and rebuild the batch report")
-    confirm.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 1 for docs/temp/batch-1")
-    confirm.add_argument("--file", type=Path, help="confirmations (shown<TAB or =>correct); default <batch>/confirmations.tsv")
-    confirm.set_defaults(handler=_confirm)
-    approve = commands.add_parser("approve", help="copy a reviewed batch's pages to verified/ and archive the batch")
-    approve.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 6 for docs/temp/batch-6")
-    approve.add_argument("--verified", type=Path, help="default books/<book>/verified")
-    approve.add_argument("--archive", type=Path, default=Path("archive"))
-    approve.set_defaults(handler=_approve)
-    convert = commands.add_parser("convert")
-    convert.add_argument("--pages", type=page_range, required=True, help="1-based, e.g. 6-10")
-    convert.set_defaults(handler=_convert)
-    quality = commands.add_parser("quality", help="report where Tesseract and the conversion disagree, and accuracy against verified/")
-    quality.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
-    quality.add_argument("--ocr-missing", action="store_true", help="run Tesseract on requested pages that have no cached OCR (slow)")
-    quality.add_argument("--verified", type=Path, help="default books/<book>/verified")
-    quality.set_defaults(handler=_quality)
-    _add_shape_commands(commands)
-    probe = commands.add_parser("probe", help="inspect a PDF's fonts and propose a font profile")
-    probe.add_argument("--pages", type=page_range, help="1-based sample pages; default ~10 spread across the PDF")
-    probe.add_argument("--write", type=Path, help="write the proposed profile JSON here")
-    probe.set_defaults(handler=_probe)
+    _add_core_commands(commands)
+    ocr_learning.add_commands(commands)
+    shape_naming.add_commands(commands)
     handler = logging.StreamHandler()
     handler.setFormatter(ExtraFormatter("%(levelname)s %(name)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler])
