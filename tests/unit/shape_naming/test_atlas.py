@@ -4,9 +4,9 @@ from pathlib import Path
 import pymupdf
 from PIL import Image
 
-from anu_unicode.atlas import RENDER_DPI, GlyphStats, glyph_stats, render_png, write_atlas
 from anu_unicode.glyphs import Glyph, Word
-from anu_unicode.shapes import Shape
+from anu_unicode.shape_naming.atlas import RENDER_DPI, GlyphStats, glyph_stats, render_png, write_atlas
+from anu_unicode.shape_naming.shapes import Shape
 
 
 def _word(text: str, marks: str = "") -> Word:

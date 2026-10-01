@@ -1,4 +1,4 @@
-from anu_unicode.solve import gap_candidates, solve_confirmed
+from anu_unicode.ocr_learning.solve import gap_candidates, solve_confirmed
 
 KNOWN: list[tuple[str, str | None]] = []
 

@@ -8,8 +8,8 @@ from anu_unicode.convert import Coverage, Segment, convert_segments, gaps, rende
 from anu_unicode.glyphs import Rect, Word, page_lines, split_words
 from anu_unicode.mapping import MappingEntry, PageProgress, Proposal
 from anu_unicode.ocr import OcrWord, best_match
+from anu_unicode.ocr_learning.solve import gap_candidates
 from anu_unicode.profile import DEFAULT_PROFILE, FontProfile
-from anu_unicode.solve import gap_candidates
 from anu_unicode.telugu import comparable, is_telugu_word
 
 MIN_DISTINCT_CONTEXTS = 2

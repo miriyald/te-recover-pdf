@@ -1,7 +1,7 @@
-from anu_unicode.confirm import Confirmation, apply_confirmations, parse_confirmations
 from anu_unicode.glyphs import Glyph, Word
-from anu_unicode.learn import LearningState
 from anu_unicode.mapping import MappingEntry, Proposal
+from anu_unicode.ocr_learning.confirm import Confirmation, apply_confirmations, parse_confirmations
+from anu_unicode.ocr_learning.learn import LearningState
 
 
 def _word(text: str) -> Word:

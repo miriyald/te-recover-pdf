@@ -2,9 +2,19 @@ from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.compare import CANDIDATE_GAP, HUMAN, NEW_WRONG, OLD_WRONG, Difference, PageWord, compare, page_words, write_comparison
 from anu_unicode.ocr import OcrWord
 from anu_unicode.profile import FontProfile
+from anu_unicode.shape_naming.compare import (
+    CANDIDATE_GAP,
+    HUMAN,
+    NEW_WRONG,
+    OLD_WRONG,
+    Difference,
+    PageWord,
+    compare,
+    page_words,
+    write_comparison,
+)
 
 CANDIDATE = {"=": "వ", "∞": "ు", "=∞": "మ", "#": "న"}
 REFERENCE = {"=": "వ", "∞": "ు", "#": "న"}

@@ -8,13 +8,8 @@ from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.approve import approve_batch, batch_pages
-from anu_unicode.atlas import collect_glyphs, load_fonts, write_atlas
-from anu_unicode.compare import compare, page_words, write_comparison
-from anu_unicode.confirm import ConfirmationResult, apply_confirmations, parse_confirmations
 from anu_unicode.convert import UNMAPPED_OPEN, Coverage, convert_anu, convert_page, convert_segments, render
 from anu_unicode.glyphs import page_lines, split_words
-from anu_unicode.learn import LearningState, Occurrence, PageResult, review_page, run_batch
 from anu_unicode.mapping import (
     Suspicion,
     append_progress,
@@ -28,12 +23,17 @@ from anu_unicode.mapping import (
     save_pending,
 )
 from anu_unicode.ocr import OcrCache
+from anu_unicode.ocr_learning.approve import approve_batch, batch_pages
+from anu_unicode.ocr_learning.confirm import ConfirmationResult, apply_confirmations, parse_confirmations
+from anu_unicode.ocr_learning.learn import LearningState, Occurrence, PageResult, review_page, run_batch
+from anu_unicode.ocr_learning.report import BatchReport, SuspiciousRow, write_batch_report
 from anu_unicode.probe import SAMPLE_PAGES, probe_document
 from anu_unicode.profile import DEFAULT_PROFILE, FontProfile, load_profile, save_profile
 from anu_unicode.quality import GroundTruthQuality, PageQuality, compare_words, ground_truth_quality, page_quality
 from anu_unicode.quality_report import QualityReport, write_quality_report
-from anu_unicode.report import BatchReport, SuspiciousRow, write_batch_report
-from anu_unicode.shapes import ShapeError, compile_mapping, load_recipes, load_shapes
+from anu_unicode.shape_naming.atlas import collect_glyphs, load_fonts, write_atlas
+from anu_unicode.shape_naming.compare import compare, page_words, write_comparison
+from anu_unicode.shape_naming.shapes import ShapeError, compile_mapping, load_recipes, load_shapes
 
 logger = logging.getLogger(__name__)
 MATCH_OVERLAP = 0.3

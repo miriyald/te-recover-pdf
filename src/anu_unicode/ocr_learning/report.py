@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.confirm import ConfirmationResult
-from anu_unicode.learn import Occurrence, PageResult
 from anu_unicode.mapping import Proposal, Suspicion
+from anu_unicode.ocr_learning.confirm import ConfirmationResult
+from anu_unicode.ocr_learning.learn import Occurrence, PageResult
 
 STYLE = (
     "body{font-family:sans-serif;margin:16px}td,th{border-bottom:1px solid #ddd;padding:4px;text-align:left;vertical-align:middle}"

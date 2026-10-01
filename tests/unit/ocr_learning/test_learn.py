@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 
 from anu_unicode.convert import convert_segments
 from anu_unicode.glyphs import page_lines, split_words
-from anu_unicode.learn import LearningState, gap_candidates, learn_page, run_batch
 from anu_unicode.mapping import MappingEntry, Proposal
 from anu_unicode.ocr import OcrWord
+from anu_unicode.ocr_learning.learn import LearningState, gap_candidates, learn_page, run_batch
 
 SEED = {"`å": "తా", "Hõ": "క", "}": "ణ", "[": "జ", "~°": "ర", "~°∞": "రు", "x": "ని", "=Ú": "ము"}
 

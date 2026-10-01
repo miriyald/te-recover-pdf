@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 from anu_unicode.convert import Coverage, Segment, convert_segments, render
 from anu_unicode.glyphs import Word
-from anu_unicode.learn import LearningState
 from anu_unicode.mapping import MappingEntry
-from anu_unicode.solve import solve_confirmed
+from anu_unicode.ocr_learning.learn import LearningState
+from anu_unicode.ocr_learning.solve import solve_confirmed
 from anu_unicode.telugu import comparable
 
 GAP = re.compile("⟦(.*?)⟧")

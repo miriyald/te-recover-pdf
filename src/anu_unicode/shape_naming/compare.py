@@ -6,11 +6,11 @@ import pymupdf
 
 from anu_unicode.convert import UNMAPPED_OPEN, Coverage, convert_anu
 from anu_unicode.glyphs import Rect, page_lines, split_words
-from anu_unicode.learn import Occurrence
 from anu_unicode.mapping import write_rows
 from anu_unicode.ocr import OcrWord, best_match
+from anu_unicode.ocr_learning.learn import Occurrence
+from anu_unicode.ocr_learning.report import STYLE, _crop, _glyphs, _table, _telugu
 from anu_unicode.profile import FontProfile
-from anu_unicode.report import STYLE, _crop, _glyphs, _table, _telugu
 from anu_unicode.telugu import comparable
 
 CANDIDATE_GAP = "candidate_gap"

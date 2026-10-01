@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from anu_unicode.convert import Coverage, convert_anu
-from anu_unicode.shapes import MAX_VARIANTS, NOTHING, Recipe, Shape, ShapeError, compile_mapping, load_recipes, load_shapes
+from anu_unicode.shape_naming.shapes import MAX_VARIANTS, NOTHING, Recipe, Shape, ShapeError, compile_mapping, load_recipes, load_shapes
 
 SHAPES = [Shape("=", "va_base", "వ"), Shape("∞", "u_hook", "ు"), Shape("#", "na_base", "న"), Shape("‰", "u_hook", "ు")]
 MA = Recipe(("va_base", "u_hook"), "మ", "ma drawn as va + hook")

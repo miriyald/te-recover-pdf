@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from anu_unicode.approve import approve_batch
+from anu_unicode.ocr_learning.approve import approve_batch
 
 
 def test_approve_copies_pages_to_verified_and_archives_batch(tmp_path: Path) -> None:

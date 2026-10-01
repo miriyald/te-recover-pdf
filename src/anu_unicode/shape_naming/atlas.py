@@ -12,7 +12,7 @@ from PIL import ImageOps
 
 from anu_unicode.glyphs import ZERO_WIDTH, Word, font_family, page_lines, split_words
 from anu_unicode.profile import FontProfile
-from anu_unicode.shapes import Shape
+from anu_unicode.shape_naming.shapes import Shape
 
 GLYPH_SIZE = 44
 WORD_SIZE = 30
