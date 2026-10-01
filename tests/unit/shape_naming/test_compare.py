@@ -90,9 +90,20 @@ def test_report_lists_every_group_and_crops_only_human_rows(tmp_path: Path) -> N
     document.new_page()
     words = [_word("=∞", "మ"), _word("#=∞#")]
 
-    write_comparison(tmp_path, compare(words, CANDIDATE, REFERENCE), document)
+    write_comparison(tmp_path, compare(words, CANDIDATE, REFERENCE), document, {})
 
     tsv = (tmp_path / "diff.tsv").read_text(encoding="utf-8").splitlines()
-    assert tsv[0] == "verdict\tcount\tglyphs\tcandidate\treference\tcandidate_votes\treference_votes\tfirst_page"
+    assert tsv[0] == "verdict\tcount\tglyphs\tshapes\tcandidate\treference\tcandidate_votes\treference_votes\tfirst_page"
     assert sorted(line.split("\t")[0] for line in tsv[1:]) == [HUMAN, OLD_WRONG]
     assert (tmp_path / "report.html").read_text(encoding="utf-8").count("<img") == 1
+
+
+def test_report_names_each_glyph_by_its_shape(tmp_path: Path) -> None:
+    document = pymupdf.open()
+    document.new_page()
+
+    write_comparison(tmp_path, compare([_word("=∞", "మ")], CANDIDATE, REFERENCE), document, {"=": "va_base", "∞": "u_hook"})
+
+    row = (tmp_path / "diff.tsv").read_text(encoding="utf-8").splitlines()[1].split("\t")
+    assert row[3] == "va_base u_hook"
+    assert "va_base u_hook" in (tmp_path / "report.html").read_text(encoding="utf-8")

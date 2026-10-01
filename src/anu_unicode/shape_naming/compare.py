@@ -17,7 +17,7 @@ NEW_WRONG = "new_wrong"
 OLD_WRONG = "old_wrong"
 HUMAN = "human"
 VERDICTS = (NEW_WRONG, CANDIDATE_GAP, HUMAN, OLD_WRONG)
-DIFF_COLUMNS = ("verdict", "count", "glyphs", "candidate", "reference", "candidate_votes", "reference_votes", "first_page")
+DIFF_COLUMNS = ("verdict", "count", "glyphs", "shapes", "candidate", "reference", "candidate_votes", "reference_votes", "first_page")
 
 
 @dataclass(frozen=True)
@@ -90,12 +90,16 @@ def _crop_cell(document: pymupdf.Document, difference: Difference) -> str:
     return crop(document, first.page, first.bbox)
 
 
-def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Document) -> None:
+def shape_names(glyphs: str, names: Mapping[str, str]) -> str:
+    return " ".join(names.get(char, "?") for char in glyphs) if names else ""
+
+
+def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Document, names: Mapping[str, str]) -> None:
     out.mkdir(parents=True, exist_ok=True)
     differences = comparison.differences
     write_rows(out / "diff.tsv", DIFF_COLUMNS, (
-        (item.verdict, item.count, item.glyphs, item.candidate, item.reference, item.candidate_votes, item.reference_votes,
-         item.first.page if item.first else "")
+        (item.verdict, item.count, item.glyphs, shape_names(item.glyphs, names), item.candidate, item.reference,
+         item.candidate_votes, item.reference_votes, item.first.page if item.first else "")
         for item in differences
     ))
     summary = [
@@ -104,8 +108,9 @@ def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Docume
         for group in [[item for item in differences if item.verdict == verdict]]
     ]
     rows = [
-        [item.verdict, str(item.count), glyphs_cell(item.glyphs), telugu_cell(item.candidate), telugu_cell(item.reference),
-         f"{item.candidate_votes} / {item.reference_votes}", str(item.first.page if item.first else ""), _crop_cell(document, item)]
+        [item.verdict, str(item.count), glyphs_cell(item.glyphs), glyphs_cell(shape_names(item.glyphs, names)),
+         telugu_cell(item.candidate), telugu_cell(item.reference), f"{item.candidate_votes} / {item.reference_votes}",
+         str(item.first.page if item.first else ""), _crop_cell(document, item)]
         for item in differences
     ]
     coverage = (
@@ -114,7 +119,8 @@ def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Docume
     )
     body = (
         table("Verdicts", ["verdict", "groups", "words"], summary)
-        + table("Differences", ["verdict", "count", "glyphs", "candidate", "reference", "OCR votes new / old", "page", "crop"], rows)
+        + table("Differences", ["verdict", "count", "glyphs", "shapes", "candidate", "reference", "OCR votes new / old", "page", "crop"],
+                rows)
     )
     (out / "report.html").write_text(
         f"<!doctype html><meta charset=utf-8><title>Shape mapping comparison</title><style>{STYLE}</style>{coverage}{body}",

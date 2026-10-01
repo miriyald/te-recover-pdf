@@ -51,12 +51,12 @@ class GlyphStats:
     words: tuple[str, ...]
 
 
-def _top(counter: Counter[str]) -> tuple[str, ...]:
+def _top(counter: Counter[str], limit: int = EXAMPLES) -> tuple[str, ...]:
     ranked = sorted(counter.items(), key=lambda item: (-item[1], len(item[0])))
-    return tuple(text for text, _ in ranked[:EXAMPLES])
+    return tuple(text for text, _ in ranked[:limit])
 
 
-def glyph_stats(words: Iterable[Word]) -> list[GlyphStats]:
+def glyph_stats(words: Iterable[Word], examples_per_glyph: int = EXAMPLES) -> list[GlyphStats]:
     counts: Counter[str] = Counter()
     zero_width: Counter[str] = Counter()
     units: dict[str, Counter[str]] = defaultdict(Counter)
@@ -71,13 +71,14 @@ def glyph_stats(words: Iterable[Word]) -> list[GlyphStats]:
         for char in set(word.text):
             examples[char][word.text] += 1
     return [
-        GlyphStats(glyph, count, 2 * zero_width[glyph] > count, _top(units[glyph]), _top(examples[glyph]))
+        GlyphStats(glyph, count, 2 * zero_width[glyph] > count, _top(units[glyph]), _top(examples[glyph], examples_per_glyph))
         for glyph, count in counts.most_common()
     ]
 
 
-def collect_glyphs(document: pymupdf.Document, profile: FontProfile) -> list[GlyphStats]:
-    return glyph_stats(word for page in document for line in page_lines(page, profile) for word in split_words(line))
+def collect_glyphs(document: pymupdf.Document, profile: FontProfile, examples_per_glyph: int = EXAMPLES) -> list[GlyphStats]:
+    words = (word for page in document for line in page_lines(page, profile) for word in split_words(line))
+    return glyph_stats(words, examples_per_glyph)
 
 
 def load_fonts(document: pymupdf.Document, profile: FontProfile) -> list[pymupdf.Font]:
