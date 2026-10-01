@@ -14,7 +14,10 @@ SPACE_BEFORE_MARK = re.compile(f" +(?={VOWEL_SIGN}|{VIRAMA})")
 PRE_BASE = "◌"
 PRE_BASE_BEFORE_CLUSTER = re.compile(f"{PRE_BASE}((?:{VIRAMA}{CONSONANT})+)({CONSONANT}(?:{VIRAMA}{CONSONANT})*)")
 PRE_BASE_SIGN = re.compile(f"{PRE_BASE}((?:{VOWEL_SIGN})+)({CONSONANT})")
-VISIBLE_VIRAMA_BEFORE_SUBSCRIPT = re.compile(f"({VIRAMA}‌)({SUBSCRIPTS})")
+ZWNJ = "‌"
+VISIBLE_VIRAMA_BEFORE_SUBSCRIPT = re.compile(f"({VIRAMA}{ZWNJ})({SUBSCRIPTS})")
+VIRAMA_WITHOUT_CONSONANT = re.compile(f"{VIRAMA}(?!{ZWNJ}|{CONSONANT})")
+COMPARABLE = str.maketrans({"“": "‘‘", "”": "’’", ZWNJ: None})
 SUBSCRIPT_RUN = re.compile(SUBSCRIPTS)
 SUBSCRIPT = re.compile(f"{VIRAMA}{CONSONANT}")
 LATE_SUBSCRIPTS = {f"{VIRAMA}ర": 1, f"{VIRAMA}య": 2}
@@ -34,6 +37,14 @@ def normalise(text: str) -> str:
     text = VISIBLE_VIRAMA_BEFORE_SUBSCRIPT.sub(r"\2\1", SIGN_BEFORE_SUBSCRIPT.sub(r"\2\1", text))
     text = SUBSCRIPT_RUN.sub(_ordered_subscripts, text)
     return unicodedata.normalize("NFC", text)
+
+
+def mark_visible_virama(text: str) -> str:
+    return VIRAMA_WITHOUT_CONSONANT.sub(VIRAMA + ZWNJ, text)
+
+
+def comparable(text: str) -> str:
+    return text.translate(COMPARABLE)
 
 
 def _ordered_subscripts(run: re.Match[str]) -> str:

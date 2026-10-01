@@ -8,6 +8,7 @@ from anu_unicode.glyphs import Word
 from anu_unicode.learn import LearningState
 from anu_unicode.mapping import MappingEntry
 from anu_unicode.solve import solve_confirmed
+from anu_unicode.telugu import comparable
 
 GAP = re.compile("⟦(.*?)⟧")
 SEPARATOR = re.compile(r"\s*=\s*|\t+")
@@ -67,9 +68,9 @@ def _apply_one(confirmation: Confirmation, words: Sequence[tuple[int, Word]], st
     gap_glyphs = GAP.findall(confirmation.shown)
     candidates = [(page, word) for page, word in words if all(glyphs in word.text for glyphs in gap_glyphs)]
     for page, word in candidates:
-        if _rendered(word, state.mapping) == confirmation.correct:
+        if comparable(_rendered(word, state.mapping)) == comparable(confirmation.correct):
             return ConfirmationResult(confirmation, "already correct", page)
-    shown = [(page, word) for page, word in candidates if _rendered(word, reviewed_mapping) == confirmation.shown]
+    shown = [(page, word) for page, word in candidates if comparable(_rendered(word, reviewed_mapping)) == comparable(confirmation.shown)]
     if not gap_glyphs:
         return ConfirmationResult(confirmation, CORRECTION if shown else "not found", shown[0][0] if shown else None)
     for page, word in shown:

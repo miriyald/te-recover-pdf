@@ -39,6 +39,19 @@ flowchart LR
 | మనకెట్టి (130) | మనకెట్టి | మనకట్టి | Reference: missing ె (confirmed by owner) |
 | పంచయజ్ఞములందు (410) | పరచయజ్ఞ | పరెచయజ్ఞ | Both wrong: the PDF uses the ర circle without a tick where ం is meant. It is the only bare circle before a consonant in the book, so it is left as a print glyph slip rather than a rule |
 
+## Round 3: ZWNJ made a pipeline rule
+Every converter output now gets ZWNJ after a virama that is not followed by a consonant, so the 8 ZWNJ differences close without editing the reference.
+The shape mapping and the corrected reference now differ on **2 words** in the whole book: మనకెట్టి (130, reference missing ె) and పంచయజ్ఞ (410, print glyph slip).
+On the 10 sample pages (6–10, 30, 60, 150, 300, 440) they agree word for word, and both differ from the old batch outputs in the same 11 words, all of them batch errors.
+
+## Round 4: last reference fix (full agreement)
+మనకెట్టి exposed two compensating reference errors. Six entries glued the pre-base ె glyph `Ô` onto the consonant before it
+(`#Ô`, `@Ô`, `}Ô`, `ÅÔ`, `~°Ô`, `^ÕÔ`), and bare `~` → రె put the ె back whenever ర followed.
+They were replaced by `Ô` → `◌ె` and `~` → ర. This changed exactly 2 words (మనకెట్టి, పరచయజ్ఞ).
+**The shape mapping and the reference now agree on all 77,191 words.**
+
+పంచయజ్ఞ (p. 410) still converts as పరచయజ్ఞ in both: the PDF encodes a ర circle where ం belongs. That is a source typo, outside any mapping.
+
 ## Shape-mapping fixes made in round 2
 - **`∂` (U+2202) split from `uu_hook` as `hook_aa`.** వ్యూహము uses `Ó` and ధౌమ్యాదులు uses `∂`. They are different glyphs, so they are not a homograph, and the వ్యూ recipe is no longer needed.
 - **Visible virama after subscripts.** The virama glyph is drawn before a following subscript but belongs after it (పబ్లికేషన్స్‌).

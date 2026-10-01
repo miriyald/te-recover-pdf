@@ -15,6 +15,10 @@ def test_longest_sequence_wins() -> None:
     assert coverage.ratio == 1.0
 
 
+def test_word_final_virama_gets_zwnj_from_any_mapping() -> None:
+    assert convert_anu("=∞#±", {**MAPPING, "±": "్"}, Coverage()) == "మన్‌"
+
+
 def test_segments_merge_adjacent_unmapped_glyphs_into_one_gap() -> None:
     segments = convert_segments("#º¯=∞", MAPPING)
 

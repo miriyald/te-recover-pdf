@@ -6,7 +6,7 @@ import pymupdf
 
 from anu_unicode.glyphs import Glyph, page_lines
 from anu_unicode.profile import DEFAULT_PROFILE, FontProfile
-from anu_unicode.telugu import normalise
+from anu_unicode.telugu import mark_visible_virama, normalise
 
 UNMAPPED_OPEN = "⟦"
 UNMAPPED_CLOSE = "⟧"
@@ -58,7 +58,8 @@ def gaps(segments: Sequence[Segment]) -> list[str]:
 def render(segments: Sequence[Segment], coverage: Coverage) -> str:
     coverage.glyphs += sum(len(glyphs) for glyphs, _ in segments if glyphs != " ")
     coverage.unmapped.update(gaps(segments))
-    return normalise("".join(UNMAPPED_OPEN + glyphs + UNMAPPED_CLOSE if unicode is None else unicode for glyphs, unicode in segments))
+    text = "".join(UNMAPPED_OPEN + glyphs + UNMAPPED_CLOSE if unicode is None else unicode for glyphs, unicode in segments)
+    return mark_visible_virama(normalise(text))
 
 
 def convert_anu(text: str, mapping: Mapping[str, str], coverage: Coverage) -> str:

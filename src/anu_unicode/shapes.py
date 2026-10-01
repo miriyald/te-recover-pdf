@@ -7,7 +7,7 @@ from pathlib import Path
 
 from anu_unicode.convert import Coverage, convert_segments, render
 from anu_unicode.mapping import MappingEntry, read_rows
-from anu_unicode.telugu import normalise
+from anu_unicode.telugu import mark_visible_virama, normalise
 
 MAX_VARIANTS = 64
 NOTHING = "∅"
@@ -76,7 +76,8 @@ def _straddles(glyphs: str, key: str) -> bool:
 
 def _check_needed(recipe: Recipe, glyph_strings: Sequence[str], entries: dict[str, MappingEntry]) -> None:
     others = {glyphs: entry.unicode for glyphs, entry in entries.items() if glyphs not in glyph_strings}
-    same_output = all(render(convert_segments(glyphs, others), Coverage()) == normalise(recipe.unicode) for glyphs in glyph_strings)
+    expected = mark_visible_virama(normalise(recipe.unicode))
+    same_output = all(render(convert_segments(glyphs, others), Coverage()) == expected for glyphs in glyph_strings)
     if same_output and not any(_straddles(glyphs, key) for glyphs in glyph_strings for key in others if len(key) > 1):
         raise ShapeError(f"recipe {recipe.names} is redundant: the other entries already give {recipe.unicode!r}")
 

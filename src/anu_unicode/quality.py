@@ -6,8 +6,7 @@ from difflib import SequenceMatcher
 from anu_unicode.convert import UNMAPPED_OPEN
 from anu_unicode.glyphs import Rect
 from anu_unicode.ocr import OcrWord, best_match
-
-QUOTES = str.maketrans({"“": "‘‘", "”": "’’"})
+from anu_unicode.telugu import comparable
 
 
 def edit_distance(reference: Sequence[str], hypothesis: Sequence[str]) -> int:
@@ -33,7 +32,7 @@ class WordComparison:
 
     @property
     def disagrees(self) -> bool:
-        return self.ocr is not None and self.ocr.translate(QUOTES) != self.converted.translate(QUOTES)
+        return self.ocr is not None and comparable(self.ocr) != comparable(self.converted)
 
 
 def compare_words(converted: Iterable[tuple[Rect, str]], ocr: list[OcrWord], min_overlap: float) -> list[WordComparison]:
@@ -45,7 +44,7 @@ def compare_words(converted: Iterable[tuple[Rect, str]], ocr: list[OcrWord], min
 
 
 def character_confusions(ocr: str, converted: str) -> Counter[tuple[str, str]]:
-    ocr, converted = ocr.translate(QUOTES), converted.translate(QUOTES)
+    ocr, converted = comparable(ocr), comparable(converted)
     matcher = SequenceMatcher(None, ocr, converted, autojunk=False)
     return Counter((ocr[a0:a1], converted[b0:b1]) for tag, a0, a1, b0, b1 in matcher.get_opcodes() if tag == "replace")
 
@@ -125,7 +124,7 @@ class GroundTruthQuality:
 
 
 def ground_truth_quality(page: int, reference: str, converted: str, ocr: str) -> GroundTruthQuality:
-    reference_words, converted_words, ocr_words = reference.split(), converted.split(), ocr.split()
+    reference_words, converted_words, ocr_words = comparable(reference).split(), comparable(converted).split(), comparable(ocr).split()
     reference_text, converted_text, ocr_text = " ".join(reference_words), " ".join(converted_words), " ".join(ocr_words)
     return GroundTruthQuality(
         page,

@@ -23,7 +23,15 @@ done (pending commit; nothing committed)
   - Visible virama moves after the subscripts drawn after it (పబ్లికేషన్స్‌).
   - Result: 50 recipes, 517 entries, **10 differing words**, none a known shape-mapping error. 126 tests, lint clean.
 
+- Committed as `8dd1fb3` (the user's `mappings/mapping.tsv` left unstaged).
+- 10-page check against old batch outputs: 11 of 1,418 words changed, all corrections.
+- Round 3: ZWNJ after a virama not followed by a consonant is now a pipeline rule (`mark_visible_virama` in `render`), and every comparison with outside text uses `comparable`. Whole book: 2 differing words. 136 tests, lint clean.
+
+- Round 4: reference fixed for the `Ô` / `~` compensating pair (−6 entries, 1 changed, 1 added). Shape mapping and reference agree on all 77,191 words.
+
 ## Decisions taken
+- పంచయజ్ఞ (p. 410) is a PDF typo; no mapping change. A word-level errata list would be the place for it if wanted.
+- ZWNJ is mainstream: every mapping's output gets it; comparisons ignore it.
 - Keep the canonical subscript order in the shared `normalise` (corrects 7 reference words).
 - Visible virama keeps ZWNJ.
 - పంచయజ్ఞ (p. 410) is left as a print glyph slip; there is no rule for one occurrence.

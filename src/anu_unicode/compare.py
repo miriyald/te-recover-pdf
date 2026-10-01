@@ -10,8 +10,8 @@ from anu_unicode.learn import Occurrence
 from anu_unicode.mapping import write_rows
 from anu_unicode.ocr import OcrWord, best_match
 from anu_unicode.profile import FontProfile
-from anu_unicode.quality import QUOTES
 from anu_unicode.report import STYLE, _crop, _glyphs, _table, _telugu
+from anu_unicode.telugu import comparable
 
 CANDIDATE_GAP = "candidate_gap"
 NEW_WRONG = "new_wrong"
@@ -77,9 +77,9 @@ def compare(words: Iterable[PageWord], candidate: Mapping[str, str], reference: 
             continue
         difference = groups.setdefault((word.glyphs, new, old), Difference(word.glyphs, new, old, first=word))
         difference.count += 1
-        ocr = word.ocr.translate(QUOTES) if word.ocr is not None else None
-        difference.candidate_votes += ocr == new.translate(QUOTES)
-        difference.reference_votes += ocr == old.translate(QUOTES)
+        ocr = comparable(word.ocr) if word.ocr is not None else None
+        difference.candidate_votes += ocr == comparable(new)
+        difference.reference_votes += ocr == comparable(old)
     comparison.differences = sorted(groups.values(), key=lambda item: (VERDICTS.index(item.verdict), -item.count, item.glyphs))
     return comparison
 

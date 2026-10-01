@@ -10,7 +10,7 @@ from anu_unicode.mapping import MappingEntry, PageProgress, Proposal
 from anu_unicode.ocr import OcrWord, best_match
 from anu_unicode.profile import DEFAULT_PROFILE, FontProfile
 from anu_unicode.solve import gap_candidates
-from anu_unicode.telugu import is_telugu_word
+from anu_unicode.telugu import comparable, is_telugu_word
 
 MIN_DISTINCT_CONTEXTS = 2
 MIN_OVERLAP = 0.5
@@ -143,7 +143,7 @@ def _classify(page: pymupdf.Page, words: Sequence[Word], mapping: dict[str, str]
         occurrence = _occurrence(page_number, word, mapping, ocr_word.text if ocr_word else "")
         if gaps(convert_segments(word.text, mapping)):
             result.unresolved.append(occurrence)
-        elif ocr_word and occurrence.converted != ocr_word.text and ocr_word.confidence >= MIN_SUSPECT_CONFIDENCE:
+        elif ocr_word and comparable(occurrence.converted) != comparable(ocr_word.text) and ocr_word.confidence >= MIN_SUSPECT_CONFIDENCE:
             result.suspects.append(occurrence)
 
 

@@ -9,6 +9,12 @@ def test_single_gap_resolved_through_subscript_reorder_elsewhere_in_word() -> No
     assert solve_confirmed(segments, "మాండవ్యోపాఖ్యానము") == {'"À': "వో"}
 
 
+def test_target_without_zwnj_solves_a_word_ending_in_a_visible_virama() -> None:
+    segments = [("=∞", "మ"), ("~°∞", "రు"), ("H", None), ("±", "్‌")]
+
+    assert solve_confirmed(segments, "మరుక్") == {"H": "క"}
+
+
 def test_pre_base_ra_gap_resolves_to_placeholder() -> None:
     segments = [("âß", "శా"), ("¢", None), ("ã≤Î", "స్తి")]
 

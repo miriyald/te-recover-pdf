@@ -2,7 +2,7 @@ import re
 from collections.abc import Sequence
 
 from anu_unicode.convert import Segment
-from anu_unicode.telugu import anu_orders, normalise
+from anu_unicode.telugu import anu_orders, comparable, normalise
 
 WIDENINGS = ((0, 1), (1, 0), (1, 1), (0, 2), (2, 0))
 
@@ -24,7 +24,8 @@ def _pattern(segments: Sequence[Segment], gap_names: dict[str, str]) -> re.Patte
 
 
 def _renders(segments: Sequence[Segment], solution: Solution, target: str) -> bool:
-    return normalise("".join(solution[glyphs] if unicode is None else unicode for glyphs, unicode in segments)) == target
+    rendered = normalise("".join(solution[glyphs] if unicode is None else unicode for glyphs, unicode in segments))
+    return comparable(rendered) == comparable(target)
 
 
 def _substrings(texts: set[str]) -> set[str]:

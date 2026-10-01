@@ -52,6 +52,19 @@ def test_doubled_single_quotes_are_the_same_word_as_a_double_quote():
     assert not comparisons[0].disagrees
 
 
+def test_zwnj_after_a_visible_virama_is_not_a_disagreement():
+    comparisons = compare_words([((0, 0, 10, 10), "మరుక్‌")], [OcrWord("మరుక్", 90.0, (0, 0, 10, 10))], min_overlap=0.5)
+
+    assert not comparisons[0].disagrees
+
+
+def test_ground_truth_without_zwnj_matches_converted_text_with_zwnj():
+    quality = ground_truth_quality(1, "మరుక్ అని", "మరుక్‌ అని", "మరుక్ అని")
+
+    assert quality.converted_word_errors == 0
+    assert quality.converted_character_error_rate == 0.0
+
+
 def test_character_confusions_report_replaced_segments_only():
     assert character_confusions("చరిత్ర", "ఛరిత్ర") == Counter({("చ", "ఛ"): 1})
 

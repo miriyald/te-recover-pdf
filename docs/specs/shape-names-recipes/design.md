@@ -62,7 +62,10 @@ Output: single-glyph entries for every glyph with a contribution, plus the expan
   1. a pre-base vowel sign (`◌ే`) moves after its consonant;
   2. a visible virama (్ + ZWNJ) moves after the subscripts drawn after it (పబ్లికేషన్స్‌);
   3. each run of subscripts is put in one canonical order, whatever order the glyphs came in: other subscripts as drawn, then ్ర, then ్య (ష్ట్ర, స్త్రీ, త్ర్య, దారిద్ర్య).
-- A visible virama glyph contributes ్ + ZWNJ, so Telugu keeps the halant form instead of forming a conjunct.
+- **ZWNJ is a pipeline rule, not a mapping detail.** `convert.render` applies `telugu.mark_visible_virama` after `normalise`: a virama not followed by a consonant gets ZWNJ, whatever mapping produced it.
+  A mid-word visible halant (షట్‌చత్వారింశ) is still written by the visible-virama glyph's own label (్ + ZWNJ), because only the shape knows it is visible.
+  `normalise` itself stays ZWNJ-free so the solver can still match fragments such as a lone subscript virama.
+- **Comparisons with outside text use `telugu.comparable`** (curly quotes folded, ZWNJ dropped): OCR votes and disagreements, gold pages, confirmations and the solver target. OCR and hand-typed text rarely carry ZWNJ, so it never counts as an error.
 - Look-alike glyphs need separate names: `∂` (`hook_aa`, the మా tail) and `Ó` (`uu_hook`, ూ in వ్యూ) looked like one shape until ధౌమ్యాదులు split them.
 
 ```mermaid
