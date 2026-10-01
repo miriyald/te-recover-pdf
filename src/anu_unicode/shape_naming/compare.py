@@ -8,9 +8,8 @@ from anu_unicode.convert import UNMAPPED_OPEN, Coverage, convert_anu
 from anu_unicode.glyphs import Rect, page_lines, split_words
 from anu_unicode.mapping import write_rows
 from anu_unicode.ocr import OcrWord, best_match
-from anu_unicode.ocr_learning.learn import Occurrence
-from anu_unicode.ocr_learning.report import STYLE, _crop, _glyphs, _table, _telugu
 from anu_unicode.profile import FontProfile
+from anu_unicode.review_html import STYLE, crop, glyphs_cell, table, telugu_cell
 from anu_unicode.telugu import comparable
 
 CANDIDATE_GAP = "candidate_gap"
@@ -88,7 +87,7 @@ def _crop_cell(document: pymupdf.Document, difference: Difference) -> str:
     first = difference.first
     if difference.verdict != HUMAN or first is None:
         return ""
-    return _crop(document, Occurrence(first.page, first.bbox, first.glyphs, difference.candidate, first.ocr or ""))
+    return crop(document, first.page, first.bbox)
 
 
 def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Document) -> None:
@@ -105,7 +104,7 @@ def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Docume
         for group in [[item for item in differences if item.verdict == verdict]]
     ]
     rows = [
-        [item.verdict, str(item.count), _glyphs(item.glyphs), _telugu(item.candidate), _telugu(item.reference),
+        [item.verdict, str(item.count), glyphs_cell(item.glyphs), telugu_cell(item.candidate), telugu_cell(item.reference),
          f"{item.candidate_votes} / {item.reference_votes}", str(item.first.page if item.first else ""), _crop_cell(document, item)]
         for item in differences
     ]
@@ -114,8 +113,8 @@ def write_comparison(out: Path, comparison: Comparison, document: pymupdf.Docume
         f"reference {comparison.reference_coverage.ratio:.4%}.</p>"
     )
     body = (
-        _table("Verdicts", ["verdict", "groups", "words"], summary)
-        + _table("Differences", ["verdict", "count", "glyphs", "candidate", "reference", "OCR votes new / old", "page", "crop"], rows)
+        table("Verdicts", ["verdict", "groups", "words"], summary)
+        + table("Differences", ["verdict", "count", "glyphs", "candidate", "reference", "OCR votes new / old", "page", "crop"], rows)
     )
     (out / "report.html").write_text(
         f"<!doctype html><meta charset=utf-8><title>Shape mapping comparison</title><style>{STYLE}</style>{coverage}{body}",
