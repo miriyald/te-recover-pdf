@@ -1,0 +1,51 @@
+names	unicode	note
+va_base u_hook	మ	ma is the va body closed by the hook
+va_base double_hook	ము	mu is the va body with the hook plus u
+va_base hook_aa	మా	maa is the va body with the hook-and-aa tail
+va_base uu_wide	మూ	muu is the va body with the wide hook-and-aa tail
+va_base e_hook u_hook	మె	the ma hook is drawn after the e sign
+va_base ee_hook u_hook	మే	the ma hook is drawn after the ee sign
+va_base e_hook double_hook	మొ	o on ma is the e sign plus the hook-and-u
+va_base e_hook hook_aa	మో	oo on ma is the e sign plus the hook-and-aa tail
+vi u_hook	మి	mi is the vi glyph closed by the hook
+vii u_hook	మీ	mii is the vii glyph closed by the hook
+ya_base tick_ta u_hook	య	ya is the ya body closed by the hook
+ya_base tick_ta hook_aa	యా	yaa is the ya body with the hook-and-aa tail
+ya_base e_hook u_hook	యె	the ya hook is drawn after the e sign
+ya_base ee_hook u_hook	యే	the ya hook is drawn after the ee sign
+ya_base e_hook double_hook	యొ	o on ya is the e sign plus the hook-and-u
+ya_base e_hook hook_aa	యో	oo on ya is the e sign plus the hook-and-aa tail
+ya_base e_hook ai_tail u_hook	యై	the ya hook is drawn after the ai tail
+ra_base uu_wide	యీ	yii is the ra circle with the wide tail
+ra_base double_hook	యి	yi is the ra circle with the hook plus u
+ha_base tick_pa aa_long	హ	ha closes with the long tail that is aa elsewhere
+ha_base i_hook aa_long	హి	hi keeps the ha tail after the i sign
+ha_base aa_long	హ	ha without its tick when a pre-base sign takes its place
+ha_base ii_hook aa_long	హీ	hii keeps the ha tail after the ii sign
+ha_base ai_tail aa_long	హౖ	hai keeps the ha tail after the ai tail; the pre-base e completes it
+pa_base stroke_dot tick_pa uu_wide	ఘూ	ghuu is the pha shape with the wide tail
+ra_base tick_ra jha_tail	ఝ	jha is the ra circle with a long tail
+ca_base stroke_low	ఛ	cha is ca with the low inner stroke
+cii stroke_low	ఛీ	chii is cii with the inner stroke
+ci stroke_low	ఛి	chi is ci with the inner stroke
+sub_pa sub_stroke	్ఫ	subscript pha is subscript pa with a stroke
+dii stroke_low	ధీ	dhii is dii with the inner stroke
+ri inner_dot	ఠి	tthi is the ri glyph with a dot inside
+ra_base inner_dot	ఠ	ttha is the ra circle with a dot inside
+dda_base stroke_low	ఢ	ddha is dda with the low inner stroke
+di stroke_mid	థి	thi is di with the middle stroke
+dii stroke_mid	థీ	thii is dii with the middle stroke
+pa_base stroke_dot tick_pa u_hook	ఘ	gha is the pha shape closed by a hook
+pa_base stroke_dot tick_pa hook_aa	ఘా	ghaa is the pha shape with the hook-and-aa tail
+pa_base stroke_dot tick_pa double_hook	ఘు	ghu is the pha shape with the hook plus u
+pa_base stroke_dot i_hook u_hook	ఘి	the gha hook is drawn after the i sign
+ba_base u_hook u_hook	ఋ	vocalic r is the ba body with two hooks
+da_base stroke_low	ధ	dha is da with the low inner stroke
+da_base stroke_mid	థ	tha is da with the middle stroke
+ba_base stroke_low	భ	bha is ba with the low inner stroke
+pa_base stroke_dot	ఫ	pha is pa with the stroke below
+bi stroke_low	భి	bhi is bi with the inner stroke
+bii stroke_low	భీ	bhii is bii with the inner stroke
+di stroke_low	ధి	dhi is di with the inner stroke
+sub_ca sub_stroke	్ఛ	subscript cha is subscript ca with a stroke
+sub_ba sub_stroke	్భ	subscript bha is subscript ba with a stroke

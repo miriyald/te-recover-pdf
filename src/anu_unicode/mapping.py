@@ -46,7 +46,7 @@ class PageProgress:
     new_entries: int
 
 
-def _read_rows(path: Path) -> list[dict[str, str]]:
+def read_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
     header, *lines = path.read_text(encoding="utf-8").splitlines()
@@ -54,7 +54,7 @@ def _read_rows(path: Path) -> list[dict[str, str]]:
     return [dict(zip(columns, line.split("\t"))) for line in lines if line.strip()]
 
 
-def _write_rows(path: Path, columns: tuple[str, ...], rows: Iterable[tuple[object, ...]]) -> None:
+def write_rows(path: Path, columns: tuple[str, ...], rows: Iterable[tuple[object, ...]]) -> None:
     lines = ["\t".join(columns)] + ["\t".join("" if value is None else str(value) for value in row) for row in rows]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
@@ -65,12 +65,12 @@ def _entry(row: dict[str, str]) -> MappingEntry:
 
 
 def load_entries(path: Path) -> dict[str, MappingEntry]:
-    return {row["glyphs"]: _entry(row) for row in _read_rows(path)}
+    return {row["glyphs"]: _entry(row) for row in read_rows(path)}
 
 
 def save_entries(path: Path, entries: Mapping[str, MappingEntry]) -> None:
     rows = ((entry.glyphs, entry.unicode, entry.first_page, entry.first_word) for _, entry in sorted(entries.items()))
-    _write_rows(path, MAPPING_COLUMNS, rows)
+    write_rows(path, MAPPING_COLUMNS, rows)
 
 
 def load_mapping(path: Path) -> dict[str, str]:
@@ -81,13 +81,13 @@ def load_pending(path: Path) -> list[Proposal]:
     return [
         Proposal(row["glyphs"], row["unicode"], int(row["count"]), int(row["first_page"]), row["first_word"],
                  set(row.get("contexts", "").split()))
-        for row in _read_rows(path)
+        for row in read_rows(path)
     ]
 
 
 def save_pending(path: Path, proposals: Iterable[Proposal]) -> None:
     rows = sorted(proposals, key=lambda proposal: (proposal.glyphs, proposal.unicode))
-    _write_rows(path, PENDING_COLUMNS, (
+    write_rows(path, PENDING_COLUMNS, (
         (p.glyphs, p.unicode, p.count, p.first_page, p.first_word, " ".join(sorted(p.contexts))) for p in rows
     ))
 
@@ -96,7 +96,7 @@ def load_suspicions(path: Path) -> list[Suspicion]:
     return [
         Suspicion(row["glyphs"], row["suggested"], row["status"], row["reason"], int(row["page"]) if row.get("page") else None,
                   row.get("word", ""))
-        for row in _read_rows(path)
+        for row in read_rows(path)
     ]
 
 
@@ -111,10 +111,10 @@ def apply_accepted(entries: dict[str, MappingEntry], suspicions: Iterable[Suspic
 
 
 def processed_pages(path: Path) -> set[int]:
-    return {int(row["page"]) for row in _read_rows(path)}
+    return {int(row["page"]) for row in read_rows(path)}
 
 
 def append_progress(path: Path, progress: PageProgress) -> None:
-    rows: list[tuple[object, ...]] = [tuple(row[column] for column in PROGRESS_COLUMNS) for row in _read_rows(path)]
+    rows: list[tuple[object, ...]] = [tuple(row[column] for column in PROGRESS_COLUMNS) for row in read_rows(path)]
     rows.append((progress.page, progress.glyphs, progress.unmapped_before, progress.unmapped_after, progress.new_entries))
-    _write_rows(path, PROGRESS_COLUMNS, rows)
+    write_rows(path, PROGRESS_COLUMNS, rows)

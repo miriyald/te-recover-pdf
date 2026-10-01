@@ -13,6 +13,11 @@ SUBSCRIPT_BEFORE_SIGN = re.compile(f"({SUBSCRIPTS})({VOWEL_SIGN})")
 SPACE_BEFORE_MARK = re.compile(f" +(?={VOWEL_SIGN}|{VIRAMA})")
 PRE_BASE = "◌"
 PRE_BASE_BEFORE_CLUSTER = re.compile(f"{PRE_BASE}((?:{VIRAMA}{CONSONANT})+)({CONSONANT}(?:{VIRAMA}{CONSONANT})*)")
+PRE_BASE_SIGN = re.compile(f"{PRE_BASE}((?:{VOWEL_SIGN})+)({CONSONANT})")
+VISIBLE_VIRAMA_BEFORE_SUBSCRIPT = re.compile(f"({VIRAMA}‌)({SUBSCRIPTS})")
+SUBSCRIPT_RUN = re.compile(SUBSCRIPTS)
+SUBSCRIPT = re.compile(f"{VIRAMA}{CONSONANT}")
+LATE_SUBSCRIPTS = {f"{VIRAMA}ర": 1, f"{VIRAMA}య": 2}
 RA_AFTER_CLUSTER = re.compile(f"({CONSONANT}(?:{VIRAMA}(?!ర){CONSONANT})*)({VIRAMA}ర)")
 
 
@@ -25,8 +30,14 @@ def is_telugu_word(text: str) -> bool:
 
 
 def normalise(text: str) -> str:
-    text = PRE_BASE_BEFORE_CLUSTER.sub(r"\2\1", SPACE_BEFORE_MARK.sub("", text))
-    return unicodedata.normalize("NFC", SIGN_BEFORE_SUBSCRIPT.sub(r"\2\1", text))
+    text = PRE_BASE_BEFORE_CLUSTER.sub(r"\2\1", PRE_BASE_SIGN.sub(r"\2\1", SPACE_BEFORE_MARK.sub("", text)))
+    text = VISIBLE_VIRAMA_BEFORE_SUBSCRIPT.sub(r"\2\1", SIGN_BEFORE_SUBSCRIPT.sub(r"\2\1", text))
+    text = SUBSCRIPT_RUN.sub(_ordered_subscripts, text)
+    return unicodedata.normalize("NFC", text)
+
+
+def _ordered_subscripts(run: re.Match[str]) -> str:
+    return "".join(sorted(SUBSCRIPT.findall(run.group()), key=lambda subscript: LATE_SUBSCRIPTS.get(subscript, 0)))
 
 
 def denormalise(text: str) -> str:

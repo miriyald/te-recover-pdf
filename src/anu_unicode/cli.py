@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
@@ -8,7 +9,8 @@ from pathlib import Path
 import pymupdf
 
 from anu_unicode.approve import approve_batch, batch_pages
-from anu_unicode.atlas import collect_units, load_fonts, write_atlas
+from anu_unicode.atlas import collect_glyphs, load_fonts, write_atlas
+from anu_unicode.compare import compare, page_words, write_comparison
 from anu_unicode.confirm import ConfirmationResult, apply_confirmations, parse_confirmations
 from anu_unicode.convert import UNMAPPED_OPEN, Coverage, convert_anu, convert_page, convert_segments, render
 from anu_unicode.glyphs import page_lines, split_words
@@ -31,6 +33,7 @@ from anu_unicode.profile import DEFAULT_PROFILE, FontProfile, load_profile, save
 from anu_unicode.quality import GroundTruthQuality, PageQuality, compare_words, ground_truth_quality, page_quality
 from anu_unicode.quality_report import QualityReport, write_quality_report
 from anu_unicode.report import BatchReport, SuspiciousRow, write_batch_report
+from anu_unicode.shapes import ShapeError, compile_mapping, load_recipes, load_shapes
 
 logger = logging.getLogger(__name__)
 MATCH_OVERLAP = 0.3
@@ -197,12 +200,19 @@ def _measure_ground_truth(document: pymupdf.Document, path: Path, mapping: dict[
     return ground_truth_quality(number, reference, convert_page(page, mapping, Coverage(), arguments.profile), ocr_text)
 
 
+def _requested_pages(arguments: argparse.Namespace, document: pymupdf.Document) -> list[int]:
+    return arguments.pages or list(range(1, document.page_count + 1))
+
+
+def _cached_pages(arguments: argparse.Namespace) -> set[int]:
+    return {int(path.stem.split("-")[1]) for path in arguments.ocr_cache.glob("page-*.json")}
+
+
 def _quality(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
     mapping = load_mapping(arguments.mapping)
-    requested = arguments.pages or list(range(1, document.page_count + 1))
-    cached = {int(path.stem.split("-")[1]) for path in arguments.ocr_cache.glob("page-*.json")}
-    numbers = requested if arguments.ocr_missing else [number for number in requested if number in cached]
+    cached = _cached_pages(arguments)
+    numbers = [number for number in _requested_pages(arguments, document) if arguments.ocr_missing or number in cached]
     pages = [_measure_page(document, number, mapping, arguments) for number in numbers]
     verified = sorted(arguments.verified.glob("page-*.unicode.txt"))
     ground_truth = [_measure_ground_truth(document, path, mapping, arguments) for path in verified]
@@ -215,8 +225,38 @@ def _quality(arguments: argparse.Namespace) -> None:
 def _atlas(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
     arguments.out.mkdir(parents=True, exist_ok=True)
-    write_atlas(arguments.out / "atlas.html", collect_units(document, arguments.profile), load_mapping(arguments.mapping),
-                load_fonts(document, arguments.profile), arguments.top)
+    shapes = {shape.glyph: shape for shape in load_shapes(arguments.names)}
+    write_atlas(arguments.out / "atlas.html", collect_glyphs(document, arguments.profile), shapes, load_fonts(document, arguments.profile))
+
+
+def _shapes(arguments: argparse.Namespace) -> None:
+    shapes = load_shapes(arguments.names)
+    recipes = load_recipes(arguments.recipes)
+    try:
+        entries = compile_mapping(shapes, recipes)
+    except ShapeError as error:
+        logger.error("shapes do not compile", extra={"error": str(error)})
+        raise SystemExit(1) from error
+    save_entries(arguments.write, entries)
+    logger.info("shapes compiled", extra={"names": len(shapes), "recipes": len(recipes), "entries": len(entries),
+                                          "path": str(arguments.write)})
+
+
+def _compare(arguments: argparse.Namespace) -> None:
+    document = pymupdf.open(arguments.pdf)
+    cached = _cached_pages(arguments)
+    words = []
+    for number in _requested_pages(arguments, document):
+        page = document[number - 1]
+        ocr = arguments.ocr(page) if arguments.ocr_missing or number in cached else None
+        words.extend(page_words(page, arguments.profile, ocr, MATCH_OVERLAP))
+    comparison = compare(words, load_mapping(arguments.candidate), load_mapping(arguments.mapping))
+    out = arguments.out / "shapes-validation"
+    write_comparison(out, comparison, document)
+    verdicts = Counter(item.verdict for item in comparison.differences)
+    logger.info("comparison written", extra={"words": comparison.words, "groups": len(comparison.differences), "verdicts": dict(verdicts),
+                                             "candidate_coverage": round(comparison.candidate_coverage.ratio, 4),
+                                             "report": str(out / "report.html"), "ocr_calls": arguments.ocr.calls})
 
 
 def _probe(arguments: argparse.Namespace) -> None:
@@ -232,10 +272,26 @@ def _probe(arguments: argparse.Namespace) -> None:
         logger.info("profile written", extra={"path": str(arguments.write)})
 
 
+def _add_shape_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    atlas = commands.add_parser("atlas", help="labelling sheet: every glyph code drawn from the embedded font, most frequent first")
+    atlas.add_argument("--names", type=Path, default=Path("shapes/names.tsv"), help="shape names to pre-fill")
+    atlas.set_defaults(handler=_atlas)
+    shapes = commands.add_parser("shapes", help="compile shape names and recipes into a mapping file")
+    shapes.add_argument("--names", type=Path, default=Path("shapes/names.tsv"))
+    shapes.add_argument("--recipes", type=Path, default=Path("shapes/recipes.tsv"))
+    shapes.add_argument("--write", type=Path, default=Path("shapes/mapping.tsv"))
+    shapes.set_defaults(handler=_shapes)
+    compare_command = commands.add_parser("compare", help="diff a candidate mapping against --mapping word by word, with OCR votes")
+    compare_command.add_argument("--candidate", type=Path, default=Path("shapes/mapping.tsv"))
+    compare_command.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
+    compare_command.add_argument("--ocr-missing", action="store_true", help="run Tesseract on pages that have no cached OCR (slow)")
+    compare_command.set_defaults(handler=_compare)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="anu-unicode")
     parser.add_argument("--profile", type=Path, help="font profile JSON (see the probe command); default: the built-in Anu profile")
-    parser.add_argument("--pdf", type=Path, default=Path("Mahabharatamu.pdf"))
+    parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
     parser.add_argument("--mapping", type=Path, default=Path("mappings/mapping.tsv"))
     parser.add_argument("--out", type=Path, default=Path("docs/temp"))
     parser.add_argument("--pending", type=Path, default=Path("mappings/pending.tsv"))
@@ -266,9 +322,7 @@ def main() -> None:
     quality.add_argument("--ocr-missing", action="store_true", help="run Tesseract on requested pages that have no cached OCR (slow)")
     quality.add_argument("--verified", type=Path, default=Path("verified"))
     quality.set_defaults(handler=_quality)
-    atlas = commands.add_parser("atlas", help="labelling sheet: every glyph unit drawn from the embedded font, most frequent first")
-    atlas.add_argument("--top", type=int, default=300, help="number of most frequent units to show")
-    atlas.set_defaults(handler=_atlas)
+    _add_shape_commands(commands)
     probe = commands.add_parser("probe", help="inspect a PDF's fonts and propose a font profile")
     probe.add_argument("--pages", type=page_range, help="1-based sample pages; default ~10 spread across the PDF")
     probe.add_argument("--write", type=Path, help="write the proposed profile JSON here")
