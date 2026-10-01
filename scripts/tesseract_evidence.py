@@ -79,10 +79,10 @@ def write_evidence(out: Path, items: list[Evidence]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect Tesseract misreads on human-verified pages as reportable evidence")
-    parser.add_argument("--pdf", type=Path, default=Path("Mahabharatamu.pdf"))
-    parser.add_argument("--mapping", type=Path, default=Path("mappings/mapping.tsv"))
-    parser.add_argument("--verified", type=Path, default=Path("verified"))
-    parser.add_argument("--ocr-cache", type=Path, default=Path("docs/temp/ocr-cache"))
+    parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
+    parser.add_argument("--mapping", type=Path, default=Path("fonts/anu/ocr-learning/mapping.tsv"))
+    parser.add_argument("--verified", type=Path, default=Path("books/mahabharatamu/verified"))
+    parser.add_argument("--ocr-cache", type=Path, default=Path("books/mahabharatamu/ocr-cache"))
     parser.add_argument("--out", type=Path, default=Path("docs/temp/tesseract-evidence"))
     parser.add_argument("--tesseract", default=os.environ.get("TESSERACT_CMD", "tesseract"))
     arguments = parser.parse_args()

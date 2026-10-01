@@ -104,7 +104,7 @@ def write_batch_report(path: Path, report: BatchReport, document: pymupdf.Docume
     occurrence_headers = ("pages", "count", "image", "glyphs", "converted", "OCR", "correct")
     sections = [
         EXPORT_PANEL,
-        _table("Suspicious mappings (mappings/suspicious.tsv)",
+        _table("Suspicious mappings (suspicious.tsv)",
                ("glyphs", "current", "suggested", "status", "reason", "words in batch", "examples"),
                _suspicious_rows(document, suspicious)) if suspicious else "",
         _table("Applied confirmations", ("shown", "correct", "status", "page", "entries", "check"),

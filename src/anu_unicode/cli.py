@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import replace
@@ -37,6 +38,8 @@ from anu_unicode.shape_naming.shapes import ShapeError, compile_mapping, load_re
 
 logger = logging.getLogger(__name__)
 MATCH_OVERLAP = 0.3
+FONTS = Path("fonts")
+BOOKS = Path("books")
 STANDARD_RECORD_FIELDS = frozenset(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
 
 
@@ -272,17 +275,37 @@ def _probe(arguments: argparse.Namespace) -> None:
         logger.info("profile written", extra={"path": str(arguments.write)})
 
 
+def book_slug(pdf: Path) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", pdf.stem.lower()).strip("-")
+
+
+def resolve_paths(arguments: argparse.Namespace) -> None:
+    font, book = FONTS / arguments.font, BOOKS / book_slug(arguments.pdf)
+    shape_naming = font / "shape-naming"
+    defaults = {
+        "profile": font / "profile.json", "mapping": font / "ocr-learning" / "mapping.tsv",
+        "pending": book / "pending.tsv", "progress": book / "progress.tsv", "suspicious": book / "suspicious.tsv",
+        "ocr_cache": book / "ocr-cache", "verified": book / "verified",
+        "names": shape_naming / "names.tsv", "recipes": shape_naming / "recipes.tsv", "candidate": shape_naming / "mapping.tsv",
+    }
+    if arguments.command == "shapes":
+        defaults["write"] = shape_naming / "mapping.tsv"
+    for name, path in defaults.items():
+        if getattr(arguments, name, path) is None:
+            setattr(arguments, name, path)
+
+
 def _add_shape_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     atlas = commands.add_parser("atlas", help="labelling sheet: every glyph code drawn from the embedded font, most frequent first")
-    atlas.add_argument("--names", type=Path, default=Path("shapes/names.tsv"), help="shape names to pre-fill")
+    atlas.add_argument("--names", type=Path, help="shape names to pre-fill; default fonts/<font>/shape-naming/names.tsv")
     atlas.set_defaults(handler=_atlas)
     shapes = commands.add_parser("shapes", help="compile shape names and recipes into a mapping file")
-    shapes.add_argument("--names", type=Path, default=Path("shapes/names.tsv"))
-    shapes.add_argument("--recipes", type=Path, default=Path("shapes/recipes.tsv"))
-    shapes.add_argument("--write", type=Path, default=Path("shapes/mapping.tsv"))
+    shapes.add_argument("--names", type=Path, help="default fonts/<font>/shape-naming/names.tsv")
+    shapes.add_argument("--recipes", type=Path, help="default fonts/<font>/shape-naming/recipes.tsv")
+    shapes.add_argument("--write", type=Path, help="default fonts/<font>/shape-naming/mapping.tsv")
     shapes.set_defaults(handler=_shapes)
     compare_command = commands.add_parser("compare", help="diff a candidate mapping against --mapping word by word, with OCR votes")
-    compare_command.add_argument("--candidate", type=Path, default=Path("shapes/mapping.tsv"))
+    compare_command.add_argument("--candidate", type=Path, help="default fonts/<font>/shape-naming/mapping.tsv")
     compare_command.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
     compare_command.add_argument("--ocr-missing", action="store_true", help="run Tesseract on pages that have no cached OCR (slow)")
     compare_command.set_defaults(handler=_compare)
@@ -290,14 +313,15 @@ def _add_shape_commands(commands: "argparse._SubParsersAction[argparse.ArgumentP
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="anu-unicode")
-    parser.add_argument("--profile", type=Path, help="font profile JSON (see the probe command); default: the built-in Anu profile")
+    parser.add_argument("--font", default="anu", help="font encoding folder under fonts/ holding the profile and both approaches' gold")
     parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
-    parser.add_argument("--mapping", type=Path, default=Path("mappings/mapping.tsv"))
+    parser.add_argument("--profile", type=Path, help="font profile JSON (see the probe command); default fonts/<font>/profile.json")
+    parser.add_argument("--mapping", type=Path, help="approach 1 mapping; default fonts/<font>/ocr-learning/mapping.tsv")
     parser.add_argument("--out", type=Path, default=Path("docs/temp"))
-    parser.add_argument("--pending", type=Path, default=Path("mappings/pending.tsv"))
-    parser.add_argument("--progress", type=Path, default=Path("mappings/progress.tsv"))
-    parser.add_argument("--suspicious", type=Path, default=Path("mappings/suspicious.tsv"))
-    parser.add_argument("--ocr-cache", type=Path, default=Path("docs/temp/ocr-cache"))
+    parser.add_argument("--pending", type=Path, help="default books/<book>/pending.tsv")
+    parser.add_argument("--progress", type=Path, help="default books/<book>/progress.tsv")
+    parser.add_argument("--suspicious", type=Path, help="default books/<book>/suspicious.tsv")
+    parser.add_argument("--ocr-cache", type=Path, help="default books/<book>/ocr-cache")
     parser.add_argument("--tesseract", default=os.environ.get("TESSERACT_CMD", "tesseract"))
     commands = parser.add_subparsers(dest="command", required=True)
     learn = commands.add_parser("learn", help="walk pages, OCR only unmapped glyphs, extend the mapping")
@@ -311,7 +335,7 @@ def main() -> None:
     confirm.set_defaults(handler=_confirm)
     approve = commands.add_parser("approve", help="copy a reviewed batch's pages to verified/ and archive the batch")
     approve.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 6 for docs/temp/batch-6")
-    approve.add_argument("--verified", type=Path, default=Path("verified"))
+    approve.add_argument("--verified", type=Path, help="default books/<book>/verified")
     approve.add_argument("--archive", type=Path, default=Path("archive"))
     approve.set_defaults(handler=_approve)
     convert = commands.add_parser("convert")
@@ -320,7 +344,7 @@ def main() -> None:
     quality = commands.add_parser("quality", help="report where Tesseract and the conversion disagree, and accuracy against verified/")
     quality.add_argument("--pages", type=page_range, help="1-based, e.g. 1-449; default whole PDF")
     quality.add_argument("--ocr-missing", action="store_true", help="run Tesseract on requested pages that have no cached OCR (slow)")
-    quality.add_argument("--verified", type=Path, default=Path("verified"))
+    quality.add_argument("--verified", type=Path, help="default books/<book>/verified")
     quality.set_defaults(handler=_quality)
     _add_shape_commands(commands)
     probe = commands.add_parser("probe", help="inspect a PDF's fonts and propose a font profile")
@@ -331,8 +355,9 @@ def main() -> None:
     handler.setFormatter(ExtraFormatter("%(levelname)s %(name)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler])
     arguments = parser.parse_args()
+    resolve_paths(arguments)
     arguments.ocr = OcrCache(arguments.ocr_cache, arguments.tesseract)
-    arguments.profile = load_profile(arguments.profile) if arguments.profile else DEFAULT_PROFILE
+    arguments.profile = load_profile(arguments.profile) if arguments.profile.exists() else DEFAULT_PROFILE
     arguments.handler(arguments)
 
 
