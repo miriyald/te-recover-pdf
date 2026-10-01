@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anu-unicode"
+version = "0.3.0"
+description = "Discover glyph-sequence mappings and convert Anu (ASCII) Telugu PDFs to Unicode"
+requires-python = ">=3.13"
+dependencies = [
+    "pymupdf==1.26.5",
+    "pytesseract==0.3.13",
+    "pillow==12.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.9",
+    "pycodestyle==2.15.0",
+    "flake8==7.4.1",
+    "pylint==4.1.1",
+    "mypy==2.3.1",
+]
+
+[project.scripts]
+anu-unicode = "anu_unicode.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 140
+
+[tool.pylint.format]
+max-line-length = 140
+
+[tool.pylint.design]
+max-attributes = 10
+
+[tool.pylint."messages control"]
+disable = ["missing-module-docstring", "missing-class-docstring", "missing-function-docstring"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true

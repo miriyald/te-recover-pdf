@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Glyph table</title>
+<style>
+  body { font-family: sans-serif; margin: 0 16px 16px; }
+  header { position: sticky; top: 0; background: #fff; padding: 8px 0; border-bottom: 1px solid #ccc; z-index: 1; }
+  button { margin-right: 6px; padding: 4px 10px; }
+  table { border-collapse: collapse; }
+  td, th { border-bottom: 1px solid #ddd; padding: 3px 8px; text-align: left; vertical-align: middle; }
+  td.glyph img { height: 56px; }
+  input.unicode { font-size: 22px; width: 150px; }
+  .codes { font-size: 11px; color: #666; max-width: 220px; word-break: break-all; }
+  tr.confirmed { background: #e8f5e9; }
+  .ocr { font-size: 20px; color: #555; }
+</style>
+<header>
+  <button id="copy">Copy confirmed as TSV</button>
+  <button id="download">Download labels.tsv</button>
+  <label><input type="checkbox" id="hide"> hide confirmed</label>
+  <span id="summary"></span>
+</header>
+<h1>Glyph table, pages __PAGES__</h1>
+<p>Unicode is prefilled with the OCR guess. Edit it, then tick OK (editing ticks it for you). Only ticked rows are exported.
+Progress is also kept in this browser; save the TSV to keep it for good and pass it back with <code>--labels</code>.</p>
+<h2>__REPEATED_COUNT__ glyphs with 2+ matches (most frequent first)</h2>
+<table id="repeated"><tr><th>id</th><th>count</th><th>glyph</th><th>OCR</th><th>Unicode</th><th>code points</th><th>OK</th></tr>__REPEATED__</table>
+<h2>__SINGLES_COUNT__ single-match shapes</h2>
+<table id="singles"><tr><th>id</th><th>count</th><th>glyph</th><th>OCR</th><th>Unicode</th><th>code points</th><th>OK</th></tr>__SINGLES__</table>
+<script>
+const STORAGE_KEY = "glyph-labels-__PAGES__";
+const rows = [...document.querySelectorAll("tr[data-id]")];
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch (error) { return {}; }
+}
+function save() {
+  const state = {};
+  rows.forEach(row => { state[row.dataset.id] = [unicodeOf(row), confirmedOf(row)]; });
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (error) { /* storage unavailable */ }
+}
+const unicodeOf = row => row.querySelector("input.unicode").value;
+const confirmedOf = row => row.querySelector("input.ok").checked;
+
+function refresh(row) {
+  const text = unicodeOf(row);
+  row.querySelector(".codes").textContent = [...text].map(c => "U+" + c.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")).join(" ");
+  row.classList.toggle("confirmed", confirmedOf(row));
+  row.hidden = document.getElementById("hide").checked && confirmedOf(row);
+}
+function summary() {
+  const confirmed = rows.filter(confirmedOf).length;
+  document.getElementById("summary").textContent = confirmed + " / " + rows.length + " confirmed";
+}
+function exportTsv() {
+  const lines = ["glyph_id\tcount\tunicode"];
+  rows.filter(confirmedOf).forEach(row => lines.push(row.dataset.id + "\t" + row.dataset.count + "\t" + unicodeOf(row)));
+  return lines.join("\n") + "\n";
+}
+
+const saved = load();
+rows.forEach(row => {
+  const entry = saved[row.dataset.id];
+  if (entry) { row.querySelector("input.unicode").value = entry[0]; row.querySelector("input.ok").checked = entry[1]; }
+  refresh(row);
+  row.querySelector("input.unicode").addEventListener("input", () => { row.querySelector("input.ok").checked = true; refresh(row); summary(); save(); });
+  row.querySelector("input.ok").addEventListener("change", () => { refresh(row); summary(); save(); });
+});
+document.getElementById("hide").addEventListener("change", () => rows.forEach(refresh));
+document.getElementById("copy").addEventListener("click", () => navigator.clipboard.writeText(exportTsv()));
+document.getElementById("download").addEventListener("click", () => {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([exportTsv()], { type: "text/plain;charset=utf-8" }));
+  link.download = "labels.tsv";
+  link.click();
+});
+summary();
+</script>
