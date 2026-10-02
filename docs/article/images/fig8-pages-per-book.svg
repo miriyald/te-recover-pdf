@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450" width="900" height="450" font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <rect width="900" height="450" fill="#ffffff"/>
+  <text x="450" y="24" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Pages converted per book (11,083 in total; every book 100% covered, 0 unmapped sequences)</text>
+  <g fill="#222">
+    <text x="150" y="58" text-anchor="end">Mahabharatamu</text><text x="150" y="80" text-anchor="end">Vol 1</text><text x="150" y="102" text-anchor="end">Vol 2</text><text x="150" y="124" text-anchor="end">Vol 3</text>
+    <text x="150" y="146" text-anchor="end">Vol 4</text><text x="150" y="168" text-anchor="end">Vol 5</text><text x="150" y="190" text-anchor="end">Vol 6</text><text x="150" y="212" text-anchor="end">Vol 7</text>
+    <text x="150" y="234" text-anchor="end">Vol 8</text><text x="150" y="256" text-anchor="end">Vol 9</text><text x="150" y="278" text-anchor="end">Vol 10</text><text x="150" y="300" text-anchor="end">Vol 11</text>
+    <text x="150" y="322" text-anchor="end">Vol 12</text><text x="150" y="344" text-anchor="end">Vol 13</text><text x="150" y="366" text-anchor="end">Vol 14</text><text x="150" y="388" text-anchor="end">Vol 15</text>
+  </g>
+  <g fill="#2c6fbb">
+    <rect x="160" y="46" width="224.5" height="16"/>
+    <rect x="160" y="90" width="278" height="16"/><rect x="160" y="112" width="202" height="16"/>
+    <rect x="160" y="134" width="353" height="16"/><rect x="160" y="156" width="445.5" height="16"/><rect x="160" y="178" width="462" height="16"/><rect x="160" y="200" width="397" height="16"/>
+    <rect x="160" y="266" width="272.5" height="16"/><rect x="160" y="288" width="400.5" height="16"/>
+    <rect x="160" y="354" width="482" height="16"/><rect x="160" y="376" width="441.5" height="16"/>
+  </g>
+  <rect x="160" y="68" width="260" height="16" fill="#2c6fbb"/>
+  <rect x="420" y="68" width="10" height="16" fill="#8e44ad"/>
+  <g fill="#c0392b">
+    <rect x="160" y="222" width="283.5" height="16"/><rect x="160" y="244" width="419.5" height="16"/>
+    <rect x="160" y="310" width="281" height="16"/><rect x="160" y="332" width="329" height="16"/>
+  </g>
+  <g fill="#555" font-size="12">
+    <text x="392" y="58">449</text><text x="436" y="80">540 (20 Type3 pages skipped)</text><text x="444" y="102">556</text>
+    <text x="368" y="124">404</text><text x="519" y="146">706</text><text x="612" y="168">891</text><text x="628" y="190">924</text><text x="563" y="212">794</text>
+    <text x="450" y="234">567</text><text x="586" y="256">839</text><text x="439" y="278">545</text><text x="567" y="300">801</text>
+    <text x="447" y="322">562</text><text x="495" y="344">658</text><text x="648" y="366">964</text><text x="608" y="388">883</text>
+  </g>
+  <rect x="160" y="410" width="12" height="12" fill="#2c6fbb"/><text x="178" y="421" fill="#222">symbol-coded or conventional</text>
+  <rect x="380" y="410" width="12" height="12" fill="#c0392b"/><text x="398" y="421" fill="#222">Type1 layout (translated)</text>
+  <rect x="580" y="410" width="12" height="12" fill="#8e44ad"/><text x="598" y="421" fill="#222">Type3 front matter</text>
+  <text x="450" y="442" text-anchor="middle" font-size="11" fill="#555">Source: files/*/output/shape-naming/manifest.json (result.pages, coverage, unmapped_sequences). Bar length is proportional to pages.</text>
+</svg>

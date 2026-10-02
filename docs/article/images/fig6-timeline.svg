@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <rect width="900" height="360" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Commit timeline (local time, 2026-10-01 to 2026-10-02)</text>
+  <line x1="40" y1="190" x2="860" y2="190" stroke="#888" stroke-width="2"/>
+
+  <g stroke="#555">
+    <line x1="60" y1="190" x2="60" y2="150"/><line x1="140" y1="190" x2="140" y2="230"/><line x1="215" y1="190" x2="215" y2="140"/>
+    <line x1="300" y1="190" x2="300" y2="235"/><line x1="395" y1="190" x2="395" y2="145"/><line x1="480" y1="190" x2="480" y2="240"/>
+    <line x1="560" y1="190" x2="560" y2="140"/><line x1="640" y1="190" x2="640" y2="235"/><line x1="715" y1="190" x2="715" y2="145"/>
+    <line x1="790" y1="190" x2="790" y2="240"/>
+  </g>
+  <g fill="#2c6fbb">
+    <circle cx="60" cy="190" r="6"/><circle cx="215" cy="190" r="6"/><circle cx="395" cy="190" r="6"/><circle cx="560" cy="190" r="6"/><circle cx="715" cy="190" r="6"/>
+  </g>
+  <g fill="#1e8449">
+    <circle cx="140" cy="190" r="6"/><circle cx="300" cy="190" r="6"/><circle cx="480" cy="190" r="6"/><circle cx="640" cy="190" r="6"/><circle cx="790" cy="190" r="6"/>
+  </g>
+
+  <g fill="#222" text-anchor="middle">
+    <text x="60" y="102">11:41</text><text x="60" y="118" font-size="12">Mapping from OCR</text><text x="60" y="134" font-size="12" fill="#555">(approach 1)</text>
+    <text x="140" y="256">14:45</text><text x="140" y="272" font-size="12">Shape names + recipes</text><text x="140" y="288" font-size="12" fill="#555">(approach 2)</text>
+    <text x="215" y="90">15:45</text><text x="215" y="106" font-size="12">ZWNJ becomes a rule</text><text x="215" y="122" font-size="12" fill="#555">(approach 1 mapping corrected)</text>
+    <text x="300" y="256">16:18-16:49</text><text x="300" y="272" font-size="12">Two packages, v0.5.0</text>
+    <text x="395" y="118">17:25</text><text x="395" y="134" font-size="12">Vol 3: U+F000 + byte</text>
+    <text x="480" y="256">20:07-20:40</text><text x="480" y="272" font-size="12">One folder per book, v0.6.0</text>
+    <text x="560" y="118">22:09</text><text x="560" y="134" font-size="12">Vol 3 done, both golds agree</text>
+    <text x="640" y="256">22:27-22:37</text><text x="640" y="272" font-size="12">Compat check; 9 volumes</text>
+    <text x="715" y="118">23:44</text><text x="715" y="134" font-size="12">Vol 1 (Type3 pages skipped)</text>
+    <text x="790" y="256" text-anchor="end">00:58</text><text x="790" y="272" font-size="12" text-anchor="end">Type1 volumes 8, 9, 12, 13</text>
+  </g>
+  <text x="40" y="330" font-size="12" fill="#555">Source: git log --format='%h %ad %s' --date=iso. 31 commits spanning 13 h 17 min; earlier exploratory work (the seed mapping) is not in the log.</text>
+</svg>

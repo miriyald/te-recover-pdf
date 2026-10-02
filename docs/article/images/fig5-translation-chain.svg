@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" width="900" height="330" font-family="Segoe UI, Arial, sans-serif" font-size="14">
+  <rect width="900" height="330" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+  </defs>
+  <text x="450" y="26" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">From PDF characters to Unicode: one chain, three entry points</text>
+
+  <rect x="20" y="50" width="200" height="56" rx="6" fill="#fdecea" stroke="#c0392b"/>
+  <text x="120" y="73" text-anchor="middle" fill="#222">Conventional volumes</text>
+  <text x="120" y="93" text-anchor="middle" font-size="12" fill="#555">Latin-looking text layer</text>
+
+  <rect x="20" y="124" width="200" height="56" rx="6" fill="#fdecea" stroke="#c0392b"/>
+  <text x="120" y="147" text-anchor="middle" fill="#222">Symbol-coded volumes</text>
+  <text x="120" y="167" text-anchor="middle" font-size="12" fill="#555">U+F000 + byte (TrueType)</text>
+
+  <rect x="20" y="198" width="200" height="56" rx="6" fill="#fdecea" stroke="#c0392b"/>
+  <text x="120" y="221" text-anchor="middle" fill="#222">Type1 volumes 8, 9, 12, 13</text>
+  <text x="120" y="241" text-anchor="middle" font-size="12" fill="#555">glyph-name characters, reshuffled</text>
+
+  <rect x="270" y="124" width="170" height="56" rx="6" fill="#eaf2fb" stroke="#2c6fbb"/>
+  <text x="355" y="147" text-anchor="middle" fill="#222">Anu byte</text>
+  <text x="355" y="167" text-anchor="middle" font-size="12" fill="#555">the common currency</text>
+
+  <rect x="270" y="198" width="170" height="56" rx="6" fill="#fff6e0" stroke="#b9770e"/>
+  <text x="355" y="221" text-anchor="middle" fill="#222">type1-layout.tsv</text>
+  <text x="355" y="241" text-anchor="middle" font-size="12" fill="#555">227 rows, shape-matched</text>
+
+  <rect x="490" y="124" width="170" height="56" rx="6" fill="#eaf2fb" stroke="#2c6fbb"/>
+  <text x="575" y="147" text-anchor="middle" fill="#222">Anu character</text>
+  <text x="575" y="167" text-anchor="middle" font-size="12" fill="#555">Mac Roman + 3 overrides</text>
+
+  <rect x="710" y="104" width="170" height="96" rx="6" fill="#eaf7ee" stroke="#1e8449"/>
+  <text x="795" y="128" text-anchor="middle" fill="#222">Gold mapping</text>
+  <text x="795" y="148" text-anchor="middle" font-size="12" fill="#555">names.tsv (222) + recipes.tsv (67)</text>
+  <text x="795" y="168" text-anchor="middle" font-size="12" fill="#555">+ ordering and ZWNJ rules</text>
+  <text x="795" y="188" text-anchor="middle" font-size="12" fill="#555">in telugu.py</text>
+
+  <rect x="710" y="226" width="170" height="44" rx="6" fill="#eaf7ee" stroke="#1e8449"/>
+  <text x="795" y="253" text-anchor="middle" fill="#222" font-weight="bold">Unicode Telugu</text>
+
+  <path d="M220 78 L245 78 L245 152" fill="none" stroke="#555" marker-end="url(#a)"/>
+  <path d="M220 152 L268 152" fill="none" stroke="#555" marker-end="url(#a)"/>
+
+  <path d="M220 226 L268 226" fill="none" stroke="#555" marker-end="url(#a)"/>
+  <path d="M355 198 L355 182" fill="none" stroke="#555" marker-end="url(#a)"/>
+  <path d="M440 152 L488 152" fill="none" stroke="#555" marker-end="url(#a)"/>
+  <path d="M660 152 L708 152" fill="none" stroke="#555" marker-end="url(#a)"/>
+  <path d="M795 200 L795 224" fill="none" stroke="#555" marker-end="url(#a)"/>
+
+  <text x="450" y="305" text-anchor="middle" font-size="12" fill="#555">Row and file counts: fonts/anu/*.tsv in the repository. The gold mapping is the same for all 16 books.</text>
+</svg>

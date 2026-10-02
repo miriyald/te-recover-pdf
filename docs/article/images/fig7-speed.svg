@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 250" width="900" height="250" font-family="Segoe UI, Arial, sans-serif" font-size="14">
+  <rect width="900" height="250" fill="#ffffff"/>
+  <text x="450" y="26" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Seconds per page (log scale)</text>
+  <g stroke="#ddd">
+    <line x1="260" y1="50" x2="260" y2="170"/><line x1="410" y1="50" x2="410" y2="170"/><line x1="560" y1="50" x2="560" y2="170"/><line x1="710" y1="50" x2="710" y2="170"/><line x1="860" y1="50" x2="860" y2="170"/>
+  </g>
+  <g fill="#555" font-size="12" text-anchor="middle">
+    <text x="260" y="190">0.01 s</text><text x="410" y="190">0.1 s</text><text x="560" y="190">1 s</text><text x="710" y="190">10 s</text>
+  </g>
+  <text x="250" y="86" text-anchor="end" fill="#222">Shape-naming conversion</text>
+  <rect x="260" y="68" width="90" height="26" fill="#1e8449"/>
+  <text x="360" y="87" fill="#222">0.04 s per page (about 26 pages/s)</text>
+  <text x="250" y="146" text-anchor="end" fill="#222">Tesseract (3 pages)</text>
+  <rect x="260" y="128" width="405" height="26" fill="#c0392b"/>
+  <text x="655" y="147" text-anchor="end" fill="#fff">about 5 s per page</text>
+  <text x="450" y="225" text-anchor="middle" font-size="12" fill="#555">Measured on one machine: 100-page convert runs of 3.4-4.3 s including start-up; 3-page quality run of 15.4 s (OCR plus conversion, so an upper bound).</text>
+</svg>
