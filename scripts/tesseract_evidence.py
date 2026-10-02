@@ -11,6 +11,7 @@ from PIL import Image
 
 from anu_unicode.convert import Coverage, convert_anu, convert_page
 from anu_unicode.glyphs import page_lines, split_words
+from anu_unicode.layout import BookLayout
 from anu_unicode.mapping import load_mapping
 from anu_unicode.ocr import DPI, OcrCache
 from anu_unicode.quality import character_confusions, compare_words
@@ -79,23 +80,22 @@ def write_evidence(out: Path, items: list[Evidence]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect Tesseract misreads on human-verified pages as reportable evidence")
-    parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
+    parser.add_argument("--book", required=True, help="book folder under files/, e.g. mahabharatamu")
     parser.add_argument("--mapping", type=Path, default=Path("fonts/anu/ocr-learning/mapping.tsv"))
-    parser.add_argument("--verified", type=Path, default=Path("books/mahabharatamu/verified"))
-    parser.add_argument("--ocr-cache", type=Path, default=Path("books/mahabharatamu/ocr-cache"))
-    parser.add_argument("--out", type=Path, default=Path("docs/temp/tesseract-evidence"))
     parser.add_argument("--tesseract", default=os.environ.get("TESSERACT_CMD", "tesseract"))
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
+    layout = BookLayout(arguments.book)
+    out = layout.intermediate("tesseract-evidence")
     for folder in ("crops", "pages"):
-        (arguments.out / folder).mkdir(parents=True, exist_ok=True)
-    document = pymupdf.open(arguments.pdf)
+        (out / folder).mkdir(parents=True, exist_ok=True)
+    document = pymupdf.open(layout.input_pdf())
     mapping = load_mapping(arguments.mapping)
-    ocr = OcrCache(arguments.ocr_cache, arguments.tesseract)
-    items = [item for path in sorted(arguments.verified.glob("page-*.unicode.txt"))
-             for item in collect_page(document, path, mapping, ocr, arguments.out)]
-    write_evidence(arguments.out, items)
-    logger.info("evidence written", extra={"items": len(items), "out": str(arguments.out)})
+    ocr = OcrCache(layout.state / "ocr-cache", arguments.tesseract)
+    items = [item for path in sorted((layout.state / "verified").glob("page-*.unicode.txt"))
+             for item in collect_page(document, path, mapping, ocr, out)]
+    write_evidence(out, items)
+    logger.info("evidence written", extra={"items": len(items), "out": str(out)})
 
 
 if __name__ == "__main__":

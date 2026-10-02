@@ -6,5 +6,5 @@ __pycache__/
 .ruff_cache/
 docs/temp/
 archive/
-books/
+files/
 fonts/*/shape-naming/mapping.tsv

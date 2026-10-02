@@ -10,6 +10,7 @@ import pymupdf
 from anu_unicode.cli import ExtraFormatter
 from anu_unicode.command_support import page_range
 from anu_unicode.convert import Coverage, convert_page
+from anu_unicode.layout import BookLayout
 from anu_unicode.mapping import load_mapping, write_rows
 from anu_unicode.profile import DEFAULT_PROFILE, load_profile
 from anu_unicode.quality import error_rate
@@ -35,18 +36,19 @@ def word_changes(saved: list[str], converted: list[str]) -> list[tuple[str, str]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Diff a mapping's conversion against page texts saved by an earlier run")
-    parser.add_argument("--pdf", type=Path, default=Path("files/Mahabharatamu.pdf"))
+    parser.add_argument("--book", required=True, help="book folder under files/, e.g. mahabharatamu")
     parser.add_argument("--mapping", type=Path, default=Path("fonts/anu/ocr-learning/mapping.tsv"))
     parser.add_argument("--profile", type=Path, default=Path("fonts/anu/profile.json"))
     parser.add_argument("--against", type=Path, nargs="+", required=True, help="directories holding page-N.unicode.txt files")
     parser.add_argument("--pages", type=page_range, help="1-based, e.g. 6-10; default every saved page")
     parser.add_argument("--exact", action="store_true", help="count ZWNJ and quote style as differences")
-    parser.add_argument("--out", type=Path, default=Path("docs/temp/compare-outputs"))
     arguments = parser.parse_args()
     handler = logging.StreamHandler()
     handler.setFormatter(ExtraFormatter("%(levelname)s %(name)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler])
-    document = pymupdf.open(arguments.pdf)
+    layout = BookLayout(arguments.book)
+    arguments.out = layout.intermediate("compare-outputs")
+    document = pymupdf.open(layout.input_pdf())
     mapping = load_mapping(arguments.mapping)
     profile = load_profile(arguments.profile) if arguments.profile.exists() else DEFAULT_PROFILE
     saved = saved_pages(arguments.against)

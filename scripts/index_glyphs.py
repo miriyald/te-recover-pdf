@@ -14,6 +14,8 @@ from numpy.typing import NDArray
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from scipy import ndimage
 
+from anu_unicode.layout import BookLayout
+
 logger = logging.getLogger(__name__)
 
 GRID = 32
@@ -176,9 +178,8 @@ def write_data(out: Path, catalog: GlyphCatalog, occurrences: list[tuple[int, Bo
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Assign glyph ids to the ink components of scanned pages")
-    parser.add_argument("--pdf", type=Path, default=Path("2015.395281.Prasaaskhara-Padakosamu.pdf"))
+    parser.add_argument("--book", default="2015-395281-prasaaskhara-padakosamu", help="book folder under files/")
     parser.add_argument("--pages", type=page_range, default=[4], help="1-based, e.g. 4 or 4-12")
-    parser.add_argument("--out", type=Path, default=Path("docs/temp/glyph-ids"))
     parser.add_argument("--max-mismatch", type=float, default=0.12, help="fraction of differing grid pixels")
     parser.add_argument("--max-aspect-drift", type=float, default=0.25, help="abs log aspect-ratio difference")
     parser.add_argument("--labels", type=Path, help="labels.tsv saved from glyph_table.html; its rows come back confirmed")
@@ -187,7 +188,9 @@ def main() -> None:
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    document = pymupdf.open(arguments.pdf)
+    layout = BookLayout(arguments.book)
+    arguments.out = layout.intermediate("glyph-ids")
+    document = pymupdf.open(layout.input_pdf())
     catalog = GlyphCatalog(arguments.max_mismatch, arguments.max_aspect_drift)
     occurrences: list[tuple[int, Box, int]] = []
     (arguments.out / "glyphs").mkdir(parents=True, exist_ok=True)
