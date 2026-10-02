@@ -62,3 +62,7 @@ e_hook_pre ee_hook_pre	◌ే	the ee sign drawn as two pre-base pieces (కే, 
 ra_vattu anusvara da_base	ంద్ర	the vattu is typed before the anusvara that closes the previous letter (ఇంద్రులు, మహేంద్ర)
 ra_vattu anusvara dda_base	ండ్ర	the vattu is typed before the anusvara and the dda (తండ్రి)
 e_hook_pre e_hook_pre	◌ె	a doubled pre-base e is a typing slip (పెదవుల)
+e_hook_pre anusvara anusvara	◌ెరం	the ra is drawn as the anusvara circle after the pre-base e (రెండు)
+ka_base ra_vattu tick_ka	క	a stray vattu typed between ka and its tick (యాహుకప్రేషిత)
+stroke_dot tick_pa sub_nna	్ణ	a stray dot stroke before the nna subscript (గృష్ణబలదేవులు)
+stroke_low ee_hook	∅	a stray low stroke with the ee sign typed over a finished letter (ఖేలన)

@@ -59,10 +59,15 @@ Per volume: font families and how each stores its codes; conversion with both go
   - `ra_vattu anusvara da_base` → ంద్ర (ఇంద్రులు, మహేంద్ర) and `… dda_base` → ండ్ర (తండ్రి);
   - `e_hook_pre e_hook_pre` → ◌ె (a doubled pre-base e, పెదవుల).
 - Effect: 78 word changes in the first rerun, all intended, plus 3 pages in Vols 6–7 for the last two recipes. Mahabharatamu and Vol 3 are byte-identical to before.
-- Still open (about 12 places, listed in the output's `unmapped.tsv` and as `◌` in `book.txt`):
-  - stray strokes `è î ä ¶ ù` (a decision is pending: silent in general, or a narrow recipe per context);
-  - `ÔOO_»∞` in Vols 10 and 7 (`◌ెంండు`);
-  - a stray vattu in Vol 4 p191 (యాహుక◌్రప్రేషితుండయి) and a lone `„` in Vol 7 p107.
+- User decisions on the last 45 places (visual review in `docs/temp/set-sanity/review.html`):
+  - `è`, `î`, `ä`, `ù` are silent (`∅`); `è` followed by ే is silent too (recipe `stroke_low ee_hook` → `∅`);
+  - `¶` is silent only before ్ణ (recipe `stroke_dot tick_pa sub_nna` → ్ణ);
+  - `◌ెంండు` is రెండు (recipe `e_hook_pre anusvara anusvara` → `◌ెరం`: the ra is drawn as the anusvara circle);
+  - `◌్రప్రే` is ప్రే (recipe `ka_base ra_vattu tick_ka` → క).
+- A recipe's Unicode can now be `∅`, like a shape's (small change in `shape_naming/shapes.py`, with a test).
+- Result: all 11 finished books have 0 unmapped sequences; Mahabharatamu and Vol 3 are unchanged. Two places remain:
+  - a lone `„` (ra vattu) in Vol 7 p107, which leaves `◌్ర`;
+  - `భైైక్షభో` in Vol 14: the same overstrike as `è` + ే, but with ై, not yet confirmed.
 
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).

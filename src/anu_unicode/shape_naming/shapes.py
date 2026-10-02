@@ -34,6 +34,10 @@ class Recipe:
     unicode: str
     note: str = ""
 
+    @property
+    def contribution(self) -> str:
+        return "" if self.unicode == NOTHING else self.unicode
+
 
 def load_shapes(path: Path) -> list[Shape]:
     return [Shape(row["glyph"], row["name"], row.get("unicode", "")) for row in read_rows(path)]
@@ -76,7 +80,7 @@ def _straddles(glyphs: str, key: str) -> bool:
 
 def _check_needed(recipe: Recipe, glyph_strings: Sequence[str], entries: dict[str, MappingEntry]) -> None:
     others = {glyphs: entry.unicode for glyphs, entry in entries.items() if glyphs not in glyph_strings}
-    expected = mark_visible_virama(normalise(recipe.unicode))
+    expected = mark_visible_virama(normalise(recipe.contribution))
     same_output = all(render(convert_segments(glyphs, others), Coverage()) == expected for glyphs in glyph_strings)
     if same_output and not any(_straddles(glyphs, key) for glyphs in glyph_strings for key in others if len(key) > 1):
         raise ShapeError(f"recipe {recipe.names} is redundant: the other entries already give {recipe.unicode!r}")
@@ -98,7 +102,7 @@ def compile_mapping(shapes: Sequence[Shape], recipes: Sequence[Recipe]) -> dict[
     expansions = [(recipe, _expand(recipe, groups)) for recipe in recipes]
     for recipe, glyph_strings in expansions:
         for glyphs in glyph_strings:
-            _add(entries, glyphs, recipe.unicode)
+            _add(entries, glyphs, recipe.contribution)
     for recipe, glyph_strings in expansions:
         _check_needed(recipe, glyph_strings, entries)
     return entries

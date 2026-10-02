@@ -26,6 +26,15 @@ def test_shape_that_contributes_nothing_maps_to_an_empty_string() -> None:
     assert convert_anu("`«", mapping, Coverage()) == "త"
 
 
+def test_recipe_that_contributes_nothing_maps_to_an_empty_string() -> None:
+    shapes = [Shape("`", "ta_base", "త"), Shape("Õ", "ee_hook", "ే"), Shape("è", "stroke_low", NOTHING)]
+
+    mapping = _mapping(shapes, [Recipe(("stroke_low", "ee_hook"), NOTHING)])
+
+    assert mapping["èÕ"] == ""
+    assert convert_anu("`èÕ", mapping, Coverage()) == "త"
+
+
 def test_recipe_expands_over_every_glyph_variant_of_its_names() -> None:
     mapping = _mapping(SHAPES, [MA])
 
