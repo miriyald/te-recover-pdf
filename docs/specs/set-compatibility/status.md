@@ -69,6 +69,17 @@ Per volume: font families and how each stores its codes; conversion with both go
   - a lone `„` (ra vattu) in Vol 7 p107, which leaves `◌్ర`;
   - `భైైక్షభో` in Vol 14: the same overstrike as `è` + ే, but with ై, not yet confirmed.
 
+## Vol 1 and the last two decisions
+- `భైైక్షభో` (Vol 14) is right as printed: no recipe.
+- A lone `◌్ర` comes out as `్ర` (Vol 7 p107). The rule lives in `telugu.finish`, the last step of `convert.render`, so the learner and solver still see the `◌` placeholder.
+- Vol 1: the body (p23 on) is the Vol 3 encoding and converts with 0 unmapped sequences and no leftovers.
+  - Front matter pages 1, 3–19, 21 and 22 (foreword, preface, introduction) are set in Type3 fonts whose codes are arbitrary per page, so they cannot be decoded with an Anu mapping.
+  - `page_lines` now skips Type3-font text instead of passing control characters through, and the manifest records those pages as `result.skipped_type3_pages`. A warning is logged on every run.
+  - No other book has Type3 text.
+  - These 20 pages still need another route (page OCR, or the glyph-id clustering POC); not done.
+- Manifest layout: run results are nested under `result` (pages, coverage, unmapped sequences, skipped Type3 pages). All 12 finished books were regenerated with it.
+- Status: Mahabharatamu and Vols 1–7, 10, 11, 14, 15 are finished (gold 2). Vols 8, 9, 12, 13 remain (Type1 subset fonts with a scrambled encoding).
+
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).
 - Which volume to take next. The ready group is the cheapest: add the families, run `convert`, and review the rare codes.

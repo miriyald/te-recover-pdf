@@ -82,7 +82,8 @@ def test_whole_book_run_is_final_output_with_book_text_and_manifest(tmp_path: Pa
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert (out / "page-1.unicode.txt").read_text(encoding="utf-8") == "first page\n"
     assert (out / "book.txt").read_text(encoding="utf-8") == "first page\n\fsecond page\n"
-    assert (manifest["book"], manifest["source"], manifest["method"], manifest["pages"]) == ("tiny", "Tiny Book.pdf", "ocr-learning", 2)
+    assert (manifest["book"], manifest["source"], manifest["method"]) == ("tiny", "Tiny Book.pdf", "ocr-learning")
+    assert manifest["result"] == {"pages": 2, "coverage": 1.0, "unmapped_sequences": 0, "skipped_type3_pages": []}
     assert list(manifest["mapping_sources"]) == ["fonts/anu/ocr-learning/mapping.tsv"]
 
 

@@ -16,15 +16,21 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class RunResult:
+    pages: int
+    coverage: float
+    unmapped_sequences: int
+    skipped_type3_pages: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class Manifest:
     book: str
     source: str
     pdf_sha256: str
     method: str
     mapping_sources: Mapping[str, str]
-    pages: int
-    coverage: float
-    unmapped_sequences: int
+    result: RunResult
     created: str
     tool_version: str = version("anu-unicode")
 

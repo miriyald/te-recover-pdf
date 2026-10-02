@@ -14,6 +14,7 @@ SPACE_BEFORE_MARK = re.compile(f" +(?={VOWEL_SIGN}|{VIRAMA})")
 PRE_BASE = "◌"
 PRE_BASE_BEFORE_CLUSTER = re.compile(f"{PRE_BASE}((?:{VIRAMA}{CONSONANT})+)({CONSONANT}(?:{VIRAMA}{CONSONANT})*)")
 PRE_BASE_SIGN = re.compile(f"{PRE_BASE}((?:{VOWEL_SIGN})+)({CONSONANT})")
+LONE_SUBSCRIPT = re.compile(f"{PRE_BASE}({SUBSCRIPTS})")
 ZWNJ = "‌"
 VISIBLE_VIRAMA_BEFORE_SUBSCRIPT = re.compile(f"({VIRAMA}{ZWNJ})({SUBSCRIPTS})")
 VIRAMA_WITHOUT_CONSONANT = re.compile(f"{VIRAMA}(?!{ZWNJ}|{CONSONANT})")
@@ -41,6 +42,10 @@ def normalise(text: str) -> str:
 
 def mark_visible_virama(text: str) -> str:
     return VIRAMA_WITHOUT_CONSONANT.sub(VIRAMA + ZWNJ, text)
+
+
+def finish(text: str) -> str:
+    return mark_visible_virama(LONE_SUBSCRIPT.sub(r"\1", normalise(text)))
 
 
 def comparable(text: str) -> str:

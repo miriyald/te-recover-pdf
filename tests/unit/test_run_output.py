@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from anu_unicode.run_output import Manifest, archive_previous, read_manifest, write_manifest
+from anu_unicode.run_output import Manifest, RunResult, archive_previous, read_manifest, write_manifest
 
 
 def _manifest(pdf_sha256: str = "abc") -> Manifest:
     return Manifest(book="b", source="B.pdf", pdf_sha256=pdf_sha256, method="ocr-learning", mapping_sources={"m.tsv": "123"},
-                    pages=2, coverage=1.0, unmapped_sequences=0, created="20261001T120000Z")
+                    result=RunResult(2, 1.0, 0), created="20261001T120000Z")
 
 
 def test_manifest_round_trips(tmp_path: Path) -> None:

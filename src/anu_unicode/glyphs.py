@@ -79,12 +79,17 @@ def _span_glyphs(span: dict[str, Any], profile: FontProfile) -> list[Glyph]:
             for char in span["chars"]]
 
 
+def type3_families(page: pymupdf.Page) -> frozenset[str]:
+    return frozenset(font_family(font[3]) for font in page.get_fonts() if font[2] == "Type3")
+
+
 def page_lines(page: pymupdf.Page, profile: FontProfile = DEFAULT_PROFILE) -> list[list[Glyph]]:
+    undecodable = type3_families(page)
     raw_lines = [
-        (line["spans"][0]["origin"][1], line["bbox"][0], [glyph for span in line["spans"] for glyph in _span_glyphs(span, profile)])
+        (spans[0]["origin"][1], line["bbox"][0], [glyph for span in spans for glyph in _span_glyphs(span, profile)])
         for block in page.get_text("rawdict")["blocks"]
         for line in block.get("lines", [])
-        if line["spans"]
+        if (spans := [span for span in line["spans"] if font_family(span["font"]) not in undecodable])
     ]
     raw_lines.sort(key=lambda item: item[0])
     rows: list[list[tuple[float, float, list[Glyph]]]] = []

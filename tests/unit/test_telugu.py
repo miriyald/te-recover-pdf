@@ -1,6 +1,6 @@
 import pytest
 
-from anu_unicode.telugu import aksharas, comparable, denormalise, is_telugu_word, mark_visible_virama, normalise
+from anu_unicode.telugu import aksharas, comparable, denormalise, finish, is_telugu_word, mark_visible_virama, normalise
 
 
 def test_aksharas_keep_conjuncts_and_split_modifiers() -> None:
@@ -63,6 +63,14 @@ def test_denormalise_is_inverse_of_subscript_reorder(unicode_order: str, anu_ord
 )
 def test_virama_not_followed_by_a_consonant_keeps_its_visible_form(text: str, marked: str) -> None:
     assert mark_visible_virama(text) == marked
+
+
+@pytest.mark.parametrize(
+    ("text", "finished"),
+    [("◌్ర", "్ర"), ("◌్ర.", "్ర."), ("◌్రప", "ప్ర"), ("◌ెక", "కె"), ("మరుక్", "మరుక్‌")],
+)
+def test_finish_drops_the_placeholder_of_a_subscript_with_no_letter_to_join(text: str, finished: str) -> None:
+    assert finish(text) == finished
 
 
 def test_comparable_ignores_zwnj_and_curly_double_quotes() -> None:

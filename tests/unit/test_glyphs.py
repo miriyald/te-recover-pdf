@@ -1,7 +1,7 @@
 from typing import Any
 from unittest.mock import MagicMock
 
-from anu_unicode.glyphs import Glyph, Word, font_family, page_lines, split_words, symbol_text
+from anu_unicode.glyphs import Glyph, Word, font_family, page_lines, split_words, symbol_text, type3_families
 from anu_unicode.profile import DEFAULT_PROFILE
 
 
@@ -60,6 +60,20 @@ def test_symbol_font_codes_become_anu_chars_in_anu_fonts_and_plain_bytes_elsewhe
     lines = page_lines(page)
 
     assert ["".join(glyph.char for glyph in line) for line in lines] == ["=∞Δ", "-"]
+
+
+def test_text_in_type3_fonts_is_skipped_because_its_codes_mean_nothing() -> None:
+    page = MagicMock()
+    page.get_fonts.return_value = [(7, "n/a", "Type3", "M", "M", "")]
+    page.get_text.return_value = {"blocks": [{"lines": [
+        _line("M", [_char("\x16", 80, 6, 100.0)]),
+        _line("ABCDEF+Priyaanka", [_char("=", 80, 6, 120.0), _char("∞", 86, 3, 120.0)]),
+    ]}]}
+
+    lines = page_lines(page)
+
+    assert ["".join(glyph.char for glyph in line) for line in lines] == ["=∞"]
+    assert type3_families(page) == {"M"}
 
 
 def test_style_suffix_does_not_hide_an_anu_family() -> None:

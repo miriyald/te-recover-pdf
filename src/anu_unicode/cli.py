@@ -9,7 +9,7 @@ import pymupdf
 
 from anu_unicode.command_support import MATCH_OVERLAP, cached_pages, page_range, requested_pages
 from anu_unicode.convert import Coverage, convert_anu, convert_page
-from anu_unicode.glyphs import page_lines, split_words
+from anu_unicode.glyphs import page_lines, split_words, type3_families
 from anu_unicode.layout import METHODS, OCR_LEARNING, SHAPE_NAMING, BookLayout, LayoutError, books
 from anu_unicode.mapping import load_mapping
 from anu_unicode.ocr import OcrCache
@@ -18,7 +18,7 @@ from anu_unicode.probe import SAMPLE_PAGES, probe_document
 from anu_unicode.profile import DEFAULT_PROFILE, load_profile, save_profile
 from anu_unicode.quality import GroundTruthQuality, PageQuality, compare_words, ground_truth_quality, page_quality
 from anu_unicode.quality_report import QualityReport, write_quality_report
-from anu_unicode.run_output import Manifest, archive_previous, now_stamp, sha256, write_manifest
+from anu_unicode.run_output import Manifest, RunResult, archive_previous, now_stamp, sha256, write_manifest
 from anu_unicode.shape_naming import commands as shape_naming
 from anu_unicode.shape_naming.shapes import compile_mapping, load_recipes, load_shapes
 
@@ -83,11 +83,14 @@ def _convert(arguments: argparse.Namespace) -> None:
     out.mkdir(parents=True)
     total = Coverage()
     texts = []
+    skipped = []
     for number in requested_pages(arguments, document):
         coverage = Coverage()
         text = convert_page(document[number - 1], mapping, coverage, arguments.profile)
         (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
         texts.append(text)
+        if type3_families(document[number - 1]):
+            skipped.append(number)
         total.glyphs += coverage.glyphs
         total.unmapped.update(coverage.unmapped)
         logger.info("page converted", extra={"page": number, "coverage": round(coverage.ratio, 4)})
@@ -96,9 +99,11 @@ def _convert(arguments: argparse.Namespace) -> None:
     (out / "unmapped.tsv").write_text("\n".join(report) + "\n", encoding="utf-8", newline="\n")
     write_manifest(out, Manifest(
         book=layout.slug, source=arguments.pdf.name, pdf_sha256=pdf_sha256, method=arguments.method,
-        mapping_sources={path.as_posix(): sha256(path) for path in sources.values()}, pages=len(texts),
-        coverage=round(total.ratio, 6), unmapped_sequences=len(total.unmapped), created=now_stamp(),
+        mapping_sources={path.as_posix(): sha256(path) for path in sources.values()},
+        result=RunResult(len(texts), round(total.ratio, 6), len(total.unmapped), tuple(skipped)), created=now_stamp(),
     ))
+    if skipped:
+        logger.warning("Type3-font text cannot be decoded and was skipped", extra={"pages": skipped})
     logger.info("conversion done", extra={"coverage": round(total.ratio, 4), "unmapped_sequences": len(total.unmapped),
                                           "final": final, "out": str(out)})
 
