@@ -71,9 +71,10 @@ def _scan_atlas(arguments: argparse.Namespace) -> None:
                         frozenset(arguments.pages or ()))
     ocr = Ocr(lambda mask: tesseract_reading(mask, arguments.tesseract), layout.state / "scan-ocr.tsv")
     rows = build_rows(source, arguments.min_count, out, ocr)
-    write_scan_atlas(out / "atlas.html", rows, {shape.glyph: shape for shape in load_shapes(arguments.names)}, "../scan-index/shapes")
+    path = out / (f"atlas-pages-{arguments.pages[0]}-{arguments.pages[-1]}.html" if arguments.pages else "atlas.html")
+    write_scan_atlas(path, rows, {shape.glyph: shape for shape in load_shapes(arguments.names)}, "../scan-index/shapes")
     logger.info("scan atlas written", extra={"shapes": len(rows), "occurrences": sum(row.count for row in rows),
-                                             "with_proposal": sum(bool(row.proposal) for row in rows), "path": str(out / "atlas.html")})
+                                             "with_proposal": sum(bool(row.proposal) for row in rows), "path": str(path)})
 
 
 def _scan_pages(arguments: argparse.Namespace) -> None:
