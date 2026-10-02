@@ -91,10 +91,25 @@ flowchart TD
    components are the tick, ి, ీ and the ె/ే hooks. Below-band ones are the vattus and ు/ూ tails when detached. Canonical order inside
    an akshara: main left→right, then above, then below. This is the "drawing order" contract `telugu.normalise` already handles.
    Output `positions.tsv`: page, column, line, word, syllable, component bbox, band.
-4. **Cluster v2.** Pass 1 is the existing online assignment with tight thresholds, so ids stay pure. Pass 2 recomputes each id's
-   **prototype** (pixel-wise median of its members) and merges ids by a shift-tolerant distance (chamfer distance on the
-   distance transform, ±2 px). The merge is gated by relative height and band so size-distinct shapes stay apart. Ids remain stable:
-   a merge maps the newer id onto the older one in `merges.tsv`.
+4. **Cluster v2 (as built).** Online assignment against a running majority-vote prototype per id, on a 48 px grid.
+   Distance: the **stray-ink share**, i.e. the share of ink in either shape that lies more than 1 px from the other shape. It is
+   tolerant to small shifts and stroke weight, but not to a missing or extra stroke. Hard gates: band, **hole count** (closed and open
+   forms, e.g. వ/న, never merge), relative height (`ం` vs `౦`), aspect. Mean chamfer distance was rejected because it averages
+   away the small hooks that separate Telugu letters. Purity beats count: a duplicate id costs one extra label (several ids may share
+   a name), but a mixed id cannot be named. Ids are append-only: a saved catalog is loaded frozen and new shapes get new ids.
+   Page furniture (ornament rules, running head, page number) is dropped by the rules' position before clustering.
+   **v3:** the stray share only finds candidates. The decision is a thick-difference test at fixed scale (own height 64 px, aspect
+   kept): XOR at ±1 px shifts, 3×3 erosion, and a different shape when the largest surviving blob exceeds 20 px. Thin noise
+   (edge jitter, ink spread) does not survive the erosion; a missing or extra stroke does, whatever the shape's size.
+
+```mermaid
+flowchart LR
+  S[component] --> G{"gates<br/>band · holes · height · aspect"}
+  G --> P["pre-filter<br/>stray share ≤ 0.2<br/>best 8 ids"]
+  P --> T{"thick test<br/>XOR ±1 px → erode 3×3<br/>largest blob ≤ 20 px?"}
+  T -- first pass --> A[assign id, update majority prototype]
+  T -- none --> N[new id]
+```
 5. **Repair.**
    - *Fused*: a rare component that matches the horizontal concatenation of two frequent prototypes, within the same distance,
      is split at the best cut column.

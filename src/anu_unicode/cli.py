@@ -19,6 +19,7 @@ from anu_unicode.profile import DEFAULT_PROFILE, load_profile, save_profile
 from anu_unicode.quality import GroundTruthQuality, PageQuality, compare_words, ground_truth_quality, page_quality
 from anu_unicode.quality_report import QualityReport, write_quality_report
 from anu_unicode.run_output import Manifest, RunResult, archive_previous, now_stamp, sha256, write_manifest
+from anu_unicode.scan import commands as scan
 from anu_unicode.shape_naming import commands as shape_naming
 from anu_unicode.shape_naming.shapes import compile_mapping, load_recipes, load_shapes
 
@@ -48,6 +49,7 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
     arguments.mapping_given = getattr(arguments, "mapping", None) is not None
     defaults = {
         "profile": font / "profile.json", "mapping": font / OCR_LEARNING / "mapping.tsv",
+        "catalog": font / "scan" / "catalog.npz",
         "names": shape_naming_dir / "names.tsv", "recipes": shape_naming_dir / "recipes.tsv", "candidate": shape_naming_dir / "mapping.tsv",
     }
     if arguments.book:
@@ -199,6 +201,7 @@ def main() -> None:
     _add_core_commands(commands)
     ocr_learning.add_commands(commands)
     shape_naming.add_commands(commands)
+    scan.add_commands(commands)
     handler = logging.StreamHandler()
     handler.setFormatter(ExtraFormatter("%(levelname)s %(name)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler])
