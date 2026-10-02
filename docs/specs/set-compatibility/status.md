@@ -80,6 +80,19 @@ Per volume: font families and how each stores its codes; conversion with both go
 - Manifest layout: run results are nested under `result` (pages, coverage, unmapped sequences, skipped Type3 pages). All 12 finished books were regenerated with it.
 - Status: Mahabharatamu and Vols 1–7, 10, 11, 14, 15 are finished (gold 2). Vols 8, 9, 12, 13 remain (Type1 subset fonts with a scrambled encoding).
 
+## Why Volumes 8, 9, 12 and 13 differ (investigated, nothing converted yet)
+- **Different build of the same typefaces.** The body fonts (`PallaviBold`, `AnupamaMedium`, and `GowthamiMedium` in Vols 8–9) are Type1/CFF fonts embedded in full (about 230 glyphs, 3–11 copies per volume, all identical). They have no `/Encoding` entry and no ToUnicode, so the text layer gets its characters from the glyph names inside the font.
+  - The glyph designs are the same as the symbol-coded TrueType fonts of the other volumes (161 of 226 Pallavi glyphs match a known Anu glyph at IoU ≥ 0.9; many of the rest are glyphs Vol 3's subset fonts never contained).
+  - The glyphs sit on different codes: Anu byte 0x41 is on `V`, 0x45 on `W`, 0x47 on `Y`, 0x49 on `I`. It is not cp1252, Latin-1, Mac Roman or the Adobe standard order, and the `/Widths` table does not match either, so there is no formula.
+  - Within a volume all copies of a family's font have the same layout (226/226 glyphs). The layout is consistent across the four volumes and across the three families (154 characters decoded, 1 ambiguous glyph).
+  - The headings (GowthamiThin, GowthamiBlack, GowthamiExtraBold, Priyaanka) in the same volumes are symbol-coded and fine. So each of these volumes mixes the two layouts, by font.
+  - Today's conversion reads the Type1 characters as Anu characters, which gives garbled words that look 93% covered.
+- **How far automatic matching goes.**
+  - Exact pixel matching decodes about a third of the uses.
+  - Best match against every finished volume's fonts is confident for 36–50% of uses; the rest have near-identical candidates (IoU 0.83–0.97).
+  - Every Anu byte is used exactly once (226 glyphs against 214 known bytes), so the leftover glyphs must take the leftover bytes. An optimal assignment agrees with the best match on about 200 of 226 glyphs; hiding 25% of the unambiguous matches and solving them recovers 25 of 30 for Pallavi (10 of 10 each for the other two, from tiny samples).
+  - So a translation table from shape matching plus assignment gets most of it; the doubtful glyphs need to be checked by eye.
+
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).
 - Which volume to take next. The ready group is the cheapest: add the families, run `convert`, and review the rare codes.
