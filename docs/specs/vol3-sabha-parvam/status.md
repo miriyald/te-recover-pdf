@@ -2,7 +2,7 @@
 _Last updated: 2026-10-01_
 
 ## Current state
-in progress: gold 2 covers Vol 3; gold 1 still has to learn the new codes
+done: both golds convert Vol 3 completely and agree word for word
 
 ## Completed
 - Font analysis (findings in `design.md`).
@@ -37,8 +37,29 @@ in progress: gold 2 covers Vol 3; gold 1 still has to learn the new codes
 - Gold 2 recipe `va_base virama u_hook` → మ్‌ (నరోత్తమమ్, వాల్యూమ్): the user's తన్ముఖమ్ confirmation showed gold 2 rendered వ్‌ు.
 - Result: Vol 3 `compare` fell from 7,265 difference groups to 37; Mahabharatamu still has 0 and is byte-identical to the baseline.
 
+- Confirmation rounds 2 and 3 (`confirmations-2.tsv`, `confirmations-3.tsv` in the batch folder):
+  - Gold 1 learned:
+    - ఘీ `Ñ¶‘∞`, ఫీ `Ñ¶‘`, ఫి `Ñ¶≤`, శ `â`, ఛ `Kè`, ఠీ `sî`;
+    - the visible viramas `_£` డ్‌, `Ñπ` ప్‌, `Q∑` గ్‌, `£` ్‌;
+    - `I` |, `≥` ె, `/`, `%`, `Ø` ూ;
+    - the r-jha conjunct `~≠` ్ఝ;
+    - the two stray strokes as context stacks.
+  - Hand stacks where the solver would have learned a too-general entry or could not fit the word:
+    - `"Õ≥` వే (వేెంకట slip);
+    - `ÃÑ¶·Ê` ఫ్ఫై;
+    - `K«õ` చ (stray ka tick);
+    - `á¶È` corrected to ఫో.
+  - Gold 2:
+    - `Ø` is `uu_sign` ూ;
+    - recipes for ఘీ, ే+ె → ే, the tickless jha as ్ఝ, the two stray strokes and ఫ్ఫై.
+- Result:
+  - The two golds agree on every word of both books (Vol 3 107,903, Mahabharatamu 77,191).
+  - All four final outputs have 100% coverage; Vol 3's 404 pages are byte-identical between the methods.
+  - Mahabharatamu is unchanged from the baseline.
+- Left out on purpose: `రీ⟦î⟧రవ → రీరవ` (contradicts కంఠీరవ; the fragment is కంఠీ-రవ split over a line). It now reads ఠీరవ.
+
 ## In progress
-- Gold 1 batch 2: the remaining gaps (`I` alone 827, `చ.` 34, `ఆంధ్రప్రదేశ్‌` 6, a few single words).
+- None.
 
 ## Blocked / open issues
 - A stray `è` (stroke_low + tick, drawn over a complete థ/ధ) is left as an unmapped gap in ప్రథ⟦è⟧మ and దుర్యోధ⟦è⟧నాది. It looks like a typist's overstrike.
