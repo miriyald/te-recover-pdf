@@ -113,13 +113,28 @@ may share a name). Only ambiguity *between different letters* matters, and that 
 - OCR evidence comes from Tesseract only.
 - Removed after the history commit (98d5a5c): `split.py`, `merge.py` (and their tests and options), `scripts/index_glyphs.py` + `glyph_table.html.tmpl`
 
+- Naming: the name defaults to the Unicode text (`ము` / `ము`); real shape names only for pieces that mean nothing alone (ticks, bars)
+- Atlas scope: ids seen ≥ 3 times (`--min-count`); rarer ids go to the gap/conflict queue
+- Work stays on branch `set-ready-volumes`
+
+## Built (Phases 3–4)
+- `source.py` (bridge): id ↔ `U+F0000 + id` (Supplementary Private Use Area-A; `U+F000–F0FF` is taken by Anu symbol glyphs),
+  `read_occurrences`, `scan_words` → `glyphs.Word` in drawing order with boxes in PDF points. Round trip through `compile_mapping` +
+  `convert_anu` is tested
+- `atlas.py` + `scan-atlas`: one row per id (count ≥ 3), prototype + member strip, two example words with the glyph boxed, Tesseract
+  `--psm 10` on 5 spread member crops (majority vote, cached in `files/<book>/state/scan-ocr.tsv`), "looks the same" ids (≥ half of this
+  id's crops pass the thick test against that id's prototype), name + Unicode inputs, *Download names.tsv* (font atlas STYLE/SCRIPT reused)
+- Catalog: `files/<book>/state/scan-catalog.npz` (generated, > 100 KB, not in git). Risk: the committed `names.tsv` is keyed by ids that only
+  this file defines, so the catalog must be kept (or archived) alongside it
+
 ## In progress
-- Labelling (Phase 4): image atlas per shape id, Tesseract pre-fill, match-graph suggestions
+- Whole-body v3 run (pages 4–195) with `--write-catalog`, then the first `scan-atlas` run
 
 ## Blocked / open issues
 - JIRA ID not given
+- Where the catalog lives long-term (see risk above)
 
 ## Next steps
-1. Whole-body v3 run (pages 4–195) with `--write-catalog`, so ids stay stable once naming starts
-2. Labelling atlas + names, then the Phase 3 bridge into `shapes` / `convert` / `compare`
+1. User labels the atlas, top-frequency first → `fonts/scan-prasaaskhara/shape-naming/names.tsv`
+2. `shapes` compile → convert sample pages through `scan_words` → `compare` against Tesseract words
 3. Conflict check after naming

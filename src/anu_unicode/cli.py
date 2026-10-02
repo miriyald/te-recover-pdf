@@ -49,7 +49,6 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
     arguments.mapping_given = getattr(arguments, "mapping", None) is not None
     defaults = {
         "profile": font / "profile.json", "mapping": font / OCR_LEARNING / "mapping.tsv",
-        "catalog": font / "scan" / "catalog.npz",
         "names": shape_naming_dir / "names.tsv", "recipes": shape_naming_dir / "recipes.tsv", "candidate": shape_naming_dir / "mapping.tsv",
     }
     if arguments.book:
@@ -59,7 +58,7 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
         if book_profile.exists():
             defaults["profile"] = book_profile
         defaults |= {"pending": state / "pending.tsv", "progress": state / "progress.tsv", "suspicious": state / "suspicious.tsv",
-                     "ocr_cache": state / "ocr-cache", "verified": state / "verified"}
+                     "ocr_cache": state / "ocr-cache", "verified": state / "verified", "catalog": state / "scan-catalog.npz"}
     if arguments.command == "shapes":
         defaults["write"] = shape_naming_dir / "mapping.tsv"
     for name, path in defaults.items():

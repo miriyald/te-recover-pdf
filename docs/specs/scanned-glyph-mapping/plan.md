@@ -28,18 +28,28 @@ Out: Tesseract model training, other scanned books, lexicon check, edits to the 
       a synthetic fused pair is split; a re-run adds no ids
 - [ ] **Review gate with the user.** On a fail, iterate Phase 2 only.
 
-### Phase 3: bridge into the existing pipeline
-- [ ] `scan_lines(layout, page) -> list[list[Glyph]]` (PUA `U+E000 + id`). `--book` with no text layer uses it
-- [ ] `fonts/scan-prasaaskhara/` encoding folder: catalog, profile
-- [ ] Unit test: a synthetic page round-trips through `split_words` → `convert_segments` with a toy `names.tsv`
+_Phases 1–2 are built (see status.md); clustering v3 is the alphabet; duplicates are accepted, purity is required. OCR = Tesseract only._
 
-### Phase 4: evidence and labelling
-- [ ] Alignment: IA + Tesseract words → akshara split → votes per distinct context → `evidence.tsv`
-- [ ] Atlas image source: prototype + member crops instead of `render_png`. Evidence columns pre-fill name/unicode
-- [ ] Human names glyph ids (top-frequency first). Recipes for composites
-- [ ] `shapes` compile → convert the 20 sample pages → `compare` vs OCR (verdict groups)
+### Phase 3: freeze ids + bridge into the existing pipeline
+- [ ] Whole-body run (pages 4–195) with `--write-catalog` → `fonts/scan-prasaaskhara/scan/catalog.npz`; later runs load it frozen, so ids
+      that carry names never change
+- [ ] `scan_words(page) -> list[Word]`: each glyph is `glyphs.Glyph(chr(0xE000 + id), bbox in PDF points, ...)` in drawing order, so
+      `convert_segments`, `shapes`, recipes and `telugu.normalise` run unchanged
+- [ ] Unit test: a synthetic page round-trips to Unicode with a toy `names.tsv`
 
-### Phase 5: quality and gold
+### Phase 4: labelling atlas (`scan-atlas`)
+- [ ] One row per id, most frequent first: id, count, band, prototype + member crops, two example word crops with the glyph boxed,
+      name + Unicode inputs, *Download names.tsv* (reusing `shape_naming/atlas.py` STYLE/SCRIPT; glyph column = the id's PUA char)
+- [ ] Pre-fill from Tesseract: `--psm 10` on up to 5 member crops of the id, majority vote → proposed Unicode (evidence only)
+- [ ] "Probably the same as": ids whose prototype a majority of this id's sampled members pass (thick test), so one decision can label
+      a family of duplicates
+- [ ] Human names ids top-frequency first; pieces that mean nothing alone get a recipe (as for Anu)
+
+### Phase 5: convert, compare, conflicts
+- [ ] `shapes` compile → convert sample pages → `compare` against Tesseract words (verdict groups)
+- [ ] Conflict check: occurrences matching ids that carry *different* names → "needs care" queue
+
+### Phase 6: quality and gold
 - [ ] Hand-verify one golden body page. Add it to `quality`
 - [ ] Convert the whole book. Quality report (gaps `⟦…⟧`, prāsa-block violations, OCR disagreements)
 
