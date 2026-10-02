@@ -132,6 +132,7 @@ may share a name). Only ambiguity *between different letters* matters, and that 
 - **Exclusion list** `fonts/scan-prasaaskhara/scan/excluded.tsv` (user-curated, committed): ids left out of every list (atlas rows and
   "looks the same", index sheet and statistics, ambiguity report). `occurrences.tsv` stays complete, so an exclusion can be undone.
   Round 1: 56 ids, all `=` bar halves above and below the line, 16,103 occurrences (16.5 %). Atlas after it: 1,893 ids, 77,796 occurrences
+  Round 2: 106 more ids (bars, specks, broken fragments; a few dots, commas and wavy strokes), 3,066 occurrences (3.1 %). Atlas: 1,787 ids, 74,730 occurrences
 - Open: excluded ids drop out of the lists only; whether they also contribute nothing in conversion is decided at the convert step
   (`=` is the headword/meaning separator in this book)
 
