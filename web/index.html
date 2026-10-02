@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anu to Unicode</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+    fieldset { margin-bottom: 1.5rem; }
+    pre, textarea { width: 100%; box-sizing: border-box; white-space: pre-wrap; font-size: 1.1rem; }
+    pre { background: #f4f4f4; padding: .75rem; min-height: 4rem; }
+    label { display: block; margin: .5rem 0 .25rem; }
+  </style>
+</head>
+<body>
+  <h1>Anu to Unicode</h1>
+  <p>Everything runs in your browser. Nothing is uploaded.</p>
+
+  <fieldset>
+    <legend>1. Mapping</legend>
+    <select id="mapping"></select>
+    <label>Or use your own mapping TSV (columns <code>glyphs</code> and <code>unicode</code>)
+      <input id="custom-mapping" type="file" accept=".tsv,.txt">
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. PDF</legend>
+    <input id="pdf" type="file" accept="application/pdf">
+    <label>Sample page <input id="sample-page" type="number" min="1" value="1"></label>
+    <p id="coverage"></p>
+    <pre id="sample"></pre>
+    <button id="convert" disabled>Convert all pages and download .txt</button>
+    <progress id="progress" value="0" max="1" hidden></progress>
+  </fieldset>
+
+  <fieldset>
+    <legend>Or paste text copied from the PDF</legend>
+    <textarea id="pasted" rows="5"></textarea>
+    <textarea id="pasted-output" rows="5" readonly></textarea>
+  </fieldset>
+
+  <p id="error" role="alert"></p>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
