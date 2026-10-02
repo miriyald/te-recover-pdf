@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
+import numpy as np
 import pymupdf
+from scipy import ndimage
 
 from anu_unicode.scan.ink import Component, find_components, median_height, render_ink
 from anu_unicode.scan.words import ScanWord, page_words
@@ -31,14 +33,34 @@ def _text_area(rules: list[Component], page_height: int) -> tuple[int, int]:
     return max(head, default=0), min(foot, default=page_height)
 
 
+def _in_hole(inner: Component, outer: Component) -> bool:
+    background, _ = ndimage.label(np.pad(~outer.mask, 1, constant_values=True))
+    row = (inner.bbox[1] + inner.bbox[3]) // 2 - outer.bbox[1] + 1
+    column = (inner.bbox[0] + inner.bbox[2]) // 2 - outer.bbox[0] + 1
+    return bool(background[row, column] > 1)
+
+
+def _with_dot(outer: Component, dot: Component) -> Component:
+    mask = outer.mask.copy()
+    top, left = dot.bbox[1] - outer.bbox[1], dot.bbox[0] - outer.bbox[0]
+    mask[top:top + dot.height, left:left + dot.width] |= dot.mask
+    return Component(outer.bbox, mask)
+
+
 def text_components(components: list[Component], body_height: float, page_height: int) -> list[Component]:
     rules = [component for component in components if component.width > FURNITURE_WIDTH * body_height]
     top, bottom = _text_area(rules, page_height)
     text = [component for component in components
-            if component.width <= FURNITURE_WIDTH * body_height and top <= component.bbox[1] and component.bbox[3] <= bottom]
-    specks = [component for component in text if max(component.width, component.height) < SPECK_SIZE * body_height]
-    enclosed = {id(speck) for speck in specks if any(_inside(speck, other) for other in text)}
-    return [component for component in text if id(component) not in enclosed]
+            if component.width <= FURNITURE_WIDTH * body_height and top <= (component.bbox[1] + component.bbox[3]) / 2 <= bottom]
+    hosts: dict[int, Component] = {}
+    dropped: set[int] = set()
+    for speck in (component for component in text if max(component.width, component.height) < SPECK_SIZE * body_height):
+        outer = next((other for other in text if _inside(speck, other)), None)
+        if outer is not None:
+            dropped.add(id(speck))
+            if _in_hole(speck, outer):
+                hosts[id(outer)] = _with_dot(hosts.get(id(outer), outer), speck)
+    return [hosts.get(id(component), component) for component in text if id(component) not in dropped]
 
 
 def scan_page(page: pymupdf.Page, number: int) -> ScanPage:

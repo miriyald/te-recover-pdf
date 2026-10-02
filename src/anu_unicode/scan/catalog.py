@@ -172,6 +172,10 @@ class ShapeCatalog:
                       if distances[index] <= self.thresholds.distance]
         return next((index for index in candidates if not thick_difference(shape.canvas, self.canvases.bitmaps[index])), None)
 
+    def keep(self, shape_id: int, shape: Shape) -> int:
+        self._count(shape_id, shape)
+        return shape_id
+
     def assign(self, shape: Shape) -> int:
         shape_id = self.match(shape)
         if shape_id is None:

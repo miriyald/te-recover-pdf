@@ -10,7 +10,7 @@ from PIL import Image
 from anu_unicode.scan.catalog import GRID, ShapeCatalog, shape_of
 from anu_unicode.scan.ink import Bitmap, Box
 from anu_unicode.scan.page import ScanPage
-from anu_unicode.scan.words import Band
+from anu_unicode.scan.words import Band, Placed
 
 MEMBER_CROPS = 16
 SAMPLE_SEED = 0
@@ -27,25 +27,43 @@ class Occurrence:
     shape_id: int
     band: Band
     bbox: Box
+    ink: int = 0
+
+
+Assignments = dict[tuple[int, Box], tuple[int, int]]
+
+
+def previous_assignments(occurrences: list[Occurrence]) -> Assignments:
+    return {(item.page, item.bbox): (item.shape_id, item.ink) for item in occurrences}
 
 
 @dataclass
 class ShapeIndex:
     catalog: ShapeCatalog
+    previous: Assignments = field(default_factory=dict)
     occurrences: list[Occurrence] = field(default_factory=list)
     members: dict[int, list[Bitmap]] = field(default_factory=dict)
     pages: dict[int, set[int]] = field(default_factory=dict)
     new_per_page: dict[int, int] = field(default_factory=dict)
+    kept: int = 0
     random: np.random.Generator = field(default_factory=lambda: np.random.default_rng(SAMPLE_SEED))
+
+    def _shape_id(self, page: ScanPage, placed: Placed) -> int:
+        shape = shape_of(placed.component, placed.band, page.body_height)
+        earlier = self.previous.get((page.number, placed.component.bbox))
+        if earlier is not None and earlier[1] == int(placed.component.mask.sum()) and earlier[0] < len(self.catalog):
+            self.kept += 1
+            return self.catalog.keep(earlier[0], shape)
+        return self.catalog.assign(shape)
 
     def add(self, page: ScanPage) -> None:
         before = len(self.catalog)
         for line_number, line in enumerate(page.lines, start=1):
             for word_number, word in enumerate(line, start=1):
                 for position, placed in enumerate(word.glyphs, start=1):
-                    shape_id = self.catalog.assign(shape_of(placed.component, placed.band, page.body_height))
+                    shape_id = self._shape_id(page, placed)
                     self.occurrences.append(Occurrence(page.number, line_number, word_number, position, shape_id, placed.band,
-                                                       placed.component.bbox))
+                                                       placed.component.bbox, int(placed.component.mask.sum())))
                     self.pages.setdefault(shape_id, set()).add(page.number)
                     self._sample(shape_id, placed.component.mask)
         self.new_per_page[page.number] = len(self.catalog) - before
@@ -94,13 +112,17 @@ def write_tsv(path: Path, header: str, rows: Iterable[str]) -> None:
     path.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8", newline="\n")
 
 
+def write_occurrences(path: Path, occurrences: Iterable[Occurrence]) -> None:
+    write_tsv(path, "page\tline\tword\tposition\tshape_id\tband\tleft\ttop\tright\tbottom\tink", (
+        f"{item.page}\t{item.line}\t{item.word}\t{item.position}\t{item.shape_id}\t{item.band}\t" + "\t".join(map(str, item.bbox))
+        + f"\t{item.ink}" for item in occurrences))
+
+
 def write_index(out: Path, index: ShapeIndex, excluded: frozenset[int] = frozenset()) -> AlphabetStats:
     shutil.rmtree(out, ignore_errors=True)
     (out / "shapes").mkdir(parents=True)
     catalog = index.catalog
-    write_tsv(out / "occurrences.tsv", "page\tline\tword\tposition\tshape_id\tband\tleft\ttop\tright\tbottom", (
-        f"{item.page}\t{item.line}\t{item.word}\t{item.position}\t{item.shape_id}\t{item.band}\t" + "\t".join(map(str, item.bbox))
-        for item in index.occurrences))
+    write_occurrences(out / "occurrences.tsv", index.occurrences)
     live = [shape_id for shape_id in index.by_frequency() if catalog.counts[shape_id]]
     ranked = [shape_id for shape_id in live if shape_id not in excluded]
     write_tsv(out / "shapes.tsv", "shape_id\tcount\tband\tholes\theight\taspect\tpages", (

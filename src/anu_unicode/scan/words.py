@@ -8,6 +8,8 @@ from anu_unicode.scan.ink import Box, Component
 MIN_OVERLAP = 0.3
 MAIN_OVERLAP = 0.5
 BODY_HEIGHT_RANGE = (0.7, 1.3)
+RESTING_OVERLAP = 0.5
+RESTING_DEPTH = 0.25
 
 
 class Band(StrEnum):
@@ -89,9 +91,18 @@ def _host(mark: Component, hosts: list[Placed]) -> int:
     ))
 
 
+def _rests_on_another(item: Component, others: list[Component]) -> bool:
+    centre = (item.bbox[1] + item.bbox[3]) / 2
+    return any(other is not item and other.height > item.height and centre < other.bbox[1] + RESTING_DEPTH * other.height
+               and _overlap((item.bbox[0], item.bbox[2]), (other.bbox[0], other.bbox[2])) >= RESTING_OVERLAP * item.width
+               for other in others)
+
+
 def _drawing_order(placed: list[Placed]) -> tuple[Placed, ...]:
-    hosts = sorted((item for item in placed if item.band is Band.MAIN), key=lambda item: item.component.bbox[0])
-    marks = sorted((item for item in placed if item.band is not Band.MAIN),
+    main = [item.component for item in placed if item.band is Band.MAIN]
+    resting = {id(item) for item in placed if item.band is Band.MAIN and _rests_on_another(item.component, main)}
+    hosts = sorted((item for item in placed if item.band is Band.MAIN and id(item) not in resting), key=lambda item: item.component.bbox[0])
+    marks = sorted((item for item in placed if item.band is not Band.MAIN or id(item) in resting),
                    key=lambda item: (item.band is Band.BELOW, item.component.bbox[0]))
     if not hosts:
         return tuple(sorted(marks, key=lambda item: item.component.bbox[0]))

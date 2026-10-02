@@ -38,6 +38,22 @@ def test_a_mark_below_follows_its_host_and_precedes_the_next_letter() -> None:
     assert [placed.band for placed in word.glyphs] == [Band.MAIN, Band.BELOW, Band.MAIN]
 
 
+def test_a_vowel_piece_resting_on_its_consonant_follows_it_even_when_it_starts_further_left() -> None:
+    tall, sign, consonant = _block(150, 0, 40, 60), _block(198, 2, 27, 25), _block(200, 18, 45, 41)
+
+    word = page_words([tall, sign, consonant], BODY, word_gap=0.45, stack_gap=0.3)[0][0]
+
+    assert [placed.component for placed in word.glyphs] == [tall, consonant, sign]
+
+
+def test_a_hook_hanging_left_of_its_consonant_keeps_coming_first() -> None:
+    tall, hook, consonant = _block(140, 0, 40, 60), _block(185, 2, 30, 25), _block(205, 18, 45, 41)
+
+    word = page_words([tall, hook, consonant], BODY, word_gap=0.45, stack_gap=0.3)[0][0]
+
+    assert [placed.component for placed in word.glyphs] == [tall, hook, consonant]
+
+
 def test_a_mark_above_is_classified_above_the_band() -> None:
     host, tick = _block(0, 20, 40, 50), _block(10, 0, 15, 15)
 

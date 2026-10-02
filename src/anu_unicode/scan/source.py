@@ -29,7 +29,7 @@ def read_excluded(path: Path) -> frozenset[int]:
 def read_occurrences(path: Path) -> list[Occurrence]:
     return [
         Occurrence(int(row["page"]), int(row["line"]), int(row["word"]), int(row["position"]), int(row["shape_id"]), Band(row["band"]),
-                   (int(row["left"]), int(row["top"]), int(row["right"]), int(row["bottom"])))
+                   (int(row["left"]), int(row["top"]), int(row["right"]), int(row["bottom"])), int(row.get("ink", 0)))
         for row in read_rows(path)
     ]
 

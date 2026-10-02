@@ -132,6 +132,7 @@ class AtlasInput:
     occurrences: list[Occurrence]
     catalog: ShapeCatalog
     excluded: frozenset[int]
+    pages: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -193,8 +194,15 @@ def propose_all(crops: Mapping[int, list[Crop]], ocr: Ocr) -> dict[int, tuple[st
     return proposals
 
 
+def _ranked_for(source: AtlasInput, min_count: int) -> list[tuple[int, int, str]]:
+    if not source.pages:
+        return ranked_ids(source.occurrences, min_count, source.excluded)
+    on_pages = {item.shape_id for item in source.occurrences if item.page in source.pages}
+    return [row for row in ranked_ids(source.occurrences, 1, source.excluded) if row[0] in on_pages]
+
+
 def build_rows(source: AtlasInput, min_count: int, out: Path, ocr: Ocr) -> list[AtlasRow]:
-    ranked = ranked_ids(source.occurrences, min_count, source.excluded)
+    ranked = _ranked_for(source, min_count)
     members: dict[int, list[Occurrence]] = defaultdict(list)
     for item in source.occurrences:
         members[item.shape_id].append(item)

@@ -144,8 +144,50 @@ may share a name). Only ambiguity *between different letters* matters, and that 
 - Smoke test, pages 100–105, *provisional* names = the 542 Tesseract proposals with ≥ 4/5 votes (scratch file in `docs/temp`, not gold):
   49.7 % glyph coverage, 12.2 % word agreement with Tesseract. Expected: the names are guesses. The pipeline runs end to end
 
+## Gold-page test: page 51 (2026-10-02)
+Ground truth per scanned word (98 scored of 103; excluded: a word crushed at the column edge, an unclear ఝా/ఝూ, an `=` bar, and one
+word split by a layout loss). Labels for the page's 242 ids read from the crops (Claude, to be spot-checked), one recipe (తె + stroke → తే).
+Scratch files: `docs/temp/scan-spike/gold/`, `gold_eval.py`.
+
+| Page 51 (in-sample: labels made on this page) | CER | exact words |
+|---|---|---|
+| ours | 0.2 % | 97/98 |
+| Tesseract on our word crops (`--psm 8`, stray quotes stripped) | 1.0 % | 93/98 |
+| Tesseract page OCR matched by box overlap | 39.2 % | 56/98 (mostly box-matching misses) |
+
+- Tesseract's misses are systematic: arasunna `ఁ` dropped (గోచి, తోట), ద→ధ, జ్జ→ట్జ, ఱి garbled. Ours: one, ఠ→ర, because
+  the enclosed-speck filter removes ఠ's inner dot
+- **Out of sample:** page-51 labels cover 35–58 % of glyphs but only 0–9 % of whole words on pages 52, 53, 100, 150, since one letter
+  is split over several ids. On the 25 covered words: 21 match Tesseract; 2 show a glyph-order bug (a detached ి placed before its
+  consonant: ిపటము); 2 are words made only of ∅ pieces
+- Defects found: (1) enclosed-speck filter deletes ఠ's dot; (2) a leading dependent vowel sign needs a reorder rule; (3) glyphs near the
+  footer rule can be dropped (గట్టిది lost its middle)
+- Finding about Tesseract: given **our** word segmentation it is far better (95 % exact words) than with its own page layout
+
+## Defects fixed (after the gold-page test)
+1. **ఠ lost its dot.** An enclosed speck inside a *hole* of its letter is now merged into the letter (32 of 63 enclosed specks on pages
+   48–55 sit in a hole, all at 0.19–0.20 body height: ఠ dots). Specks not in a hole are still dropped as noise
+2. **Detached vowel sign ordered first** (ిపటము). Root cause: main-band order by left edge. A smaller main-band piece that rests on top
+   of another glyph (≥ 50 % x-overlap, centre above that glyph's top quarter) is now ordered after it, like a mark above. Hooks hanging
+   left of their consonant (◌ె/◌ే, ~44 % overlap) keep coming first
+3. **Glyphs dropped near the foot rule** (గట్టిది). The rule's box starts at the raised page-number oval; a component is now kept when
+   its vertical *centre* is inside the text area
+
+**Assignment stability (found while re-running):** re-indexing against the frozen catalog kept every id's meaning but moved occurrences
+between duplicate ids, and gave some `=` bars new ids. Fix: `occurrences.tsv` gains an `ink` column, and `scan-index` reuses the previous
+id for a component with the same page, box and ink count (`files/<book>/state/scan-occurrences.tsv`, written with `--write-catalog`).
+The original assignments were regenerated exactly from commit e016648 (catalog arrays identical to the backup). Re-run with the fixes:
+97,384 of 97,503 occurrences kept their id, 116 changed shape (dot merges), 53 boxes restored at the foot rule, 35 new ids; 56 s.
+
+Page 51 after the fixes (two new ids labelled: 4883 ఠి, 2269 ట్టి): **ours 99/99 exact, 0.0 % CER**; Tesseract on our word crops 94/99,
+1.0 % CER. పిటము, పిడికిలి now come out right on pages 52–53.
+
+## Page order for labelling (`scan-pages`)
+Greedy by new shape ids: page 67 (305 ids, 35.5 % of ink covered after it), 171, 51, 142, 54, 55, 191, 25, 163, 43 (82.5 % after ten).
+`scan-atlas --pages N` lists every id on those pages with book-wide counts.
+
 ## In progress
-- User labels the atlas (order suggestion: `scan-convert` `unmapped.tsv`, then frequency)
+- Labelling page by page from page 67
 
 ## Blocked / open issues
 - JIRA ID not given

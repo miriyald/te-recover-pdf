@@ -2,10 +2,12 @@ from pathlib import Path
 
 import numpy as np
 
-from anu_unicode.scan.atlas import (
+from anu_unicode.scan.atlas import (  # pylint: disable=protected-access
+    AtlasInput,
     AtlasRow,
     Crop,
     Ocr,
+    _ranked_for,
     largest_component,
     majority,
     propose_all,
@@ -102,3 +104,11 @@ def test_atlas_rows_carry_the_private_use_glyph_and_prefilled_names(tmp_path: Pa
     assert 'data-same="12"' in page
     assert 'value="ము"' in page
     assert "../scan-index/shapes/7.png" in page
+
+
+def test_a_page_scoped_atlas_lists_every_id_on_the_page_with_book_counts() -> None:
+    occurrences = [_occurrence(2, page=51), _occurrence(2, page=60), _occurrence(5, page=51), _occurrence(9, page=60)]
+    catalog = ShapeCatalog(Thresholds(0.2, 0.2, 0.25))
+    source = AtlasInput(None, occurrences, catalog, frozenset({5}), frozenset({51}))  # type: ignore[arg-type]
+
+    assert _ranked_for(source, min_count=3) == [(2, 2, "main")]

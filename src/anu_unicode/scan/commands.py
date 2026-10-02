@@ -15,14 +15,16 @@ from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
 from anu_unicode.scan.atlas import AtlasInput, Ocr, build_rows, tesseract_reading, write_scan_atlas
 from anu_unicode.scan.catalog import ShapeCatalog, Thresholds, load_catalog
 from anu_unicode.scan.conversion import convert_scan_page, unmapped_ids
-from anu_unicode.scan.index import Occurrence, ShapeIndex, write_index
+from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.ink import pixels_per_point
 from anu_unicode.scan.page import ScanPage, scan_page
+from anu_unicode.scan.pages import rank_pages
 from anu_unicode.scan.source import read_excluded, read_occurrences
 from anu_unicode.shape_naming.shapes import compile_mapping, load_recipes, load_shapes
 
 logger = logging.getLogger(__name__)
 SCAN = "[scanned books]"
+ASSIGNMENTS = "scan-occurrences.tsv"
 
 
 def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
@@ -44,16 +46,19 @@ def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: l
 def _scan_index(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
     pages = [scan_page(document[number - 1], number) for number in requested_pages(arguments, document)]
-    index = ShapeIndex(_catalog(arguments))
+    assigned = arguments.layout.state / ASSIGNMENTS
+    previous = previous_assignments(read_occurrences(assigned)) if not arguments.rebuild else {}
+    index = ShapeIndex(_catalog(arguments), previous)
     for page in pages:
         index.add(page)
     out = arguments.layout.intermediate("scan-index")
     stats = write_index(out, index, read_excluded(arguments.excluded))
     if arguments.write_catalog:
         index.catalog.save(arguments.catalog)
+        write_occurrences(assigned, index.occurrences)
     if arguments.ambiguity:
         _report_ambiguity(arguments, index, pages)
-    logger.info("scan index written", extra={"shapes": stats.shapes, "singletons": stats.singletons,
+    logger.info("scan index written", extra={"shapes": stats.shapes, "singletons": stats.singletons, "kept_assignments": index.kept,
                                              "shapes_for_99_percent": stats.shapes_for_coverage, "occurrences": stats.occurrences,
                                              "sheet": str(out / "shapes.html"), "catalog_written": arguments.write_catalog})
 
@@ -62,12 +67,25 @@ def _scan_atlas(arguments: argparse.Namespace) -> None:
     layout = arguments.layout
     occurrences = read_occurrences(layout.intermediate("scan-index") / "occurrences.tsv")
     out = layout.intermediate("scan-atlas")
-    source = AtlasInput(pymupdf.open(arguments.pdf), occurrences, load_catalog(arguments.catalog), read_excluded(arguments.excluded))
+    source = AtlasInput(pymupdf.open(arguments.pdf), occurrences, load_catalog(arguments.catalog), read_excluded(arguments.excluded),
+                        frozenset(arguments.pages or ()))
     ocr = Ocr(lambda mask: tesseract_reading(mask, arguments.tesseract), layout.state / "scan-ocr.tsv")
     rows = build_rows(source, arguments.min_count, out, ocr)
     write_scan_atlas(out / "atlas.html", rows, {shape.glyph: shape for shape in load_shapes(arguments.names)}, "../scan-index/shapes")
     logger.info("scan atlas written", extra={"shapes": len(rows), "occurrences": sum(row.count for row in rows),
                                              "with_proposal": sum(bool(row.proposal) for row in rows), "path": str(out / "atlas.html")})
+
+
+def _scan_pages(arguments: argparse.Namespace) -> None:
+    occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
+    ranked = rank_pages(occurrences, read_excluded(arguments.excluded))
+    out = arguments.layout.intermediate("scan-pages")
+    out.mkdir(parents=True, exist_ok=True)
+    write_rows(out / "pages.tsv", ("rank", "page", "words", "shapes", "new_shapes", "ink_covered_after"),
+               [(rank, item.page, item.words, item.shapes, item.new_shapes, f"{item.covered_after:.3f}")
+                for rank, item in enumerate(ranked, start=1)])
+    logger.info("pages ranked by new shapes", extra={"first": [(item.page, item.new_shapes) for item in ranked[:10]],
+                                                     "path": str(out / "pages.tsv")})
 
 
 def _occurrences_by_page(arguments: argparse.Namespace) -> dict[int, list[Occurrence]]:
@@ -120,9 +138,13 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     index.set_defaults(handler=_scan_index)
     atlas = commands.add_parser("scan-atlas", help=f"{SCAN} labelling sheet: one row per shape id with crops and a Tesseract proposal")
     atlas.add_argument("--min-count", type=int, default=3, help="list ids seen at least this often")
+    atlas.add_argument("--pages", type=page_range, help="only the ids on these pages, however rare, e.g. 51")
     atlas.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
     atlas.add_argument("--names", type=Path, help="names to pre-fill; default fonts/<font>/shape-naming/names.tsv")
     atlas.set_defaults(handler=_scan_atlas)
+    pages = commands.add_parser("scan-pages", help=f"{SCAN} rank pages by how many new shape ids each adds, to label page by page")
+    pages.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
+    pages.set_defaults(handler=_scan_pages)
     convert = commands.add_parser("scan-convert", help=f"{SCAN} convert scanned pages with the shape names and recipes")
     convert.add_argument("--pages", type=page_range, help="1-based, e.g. 100-105; default every indexed page")
     convert.add_argument("--names", type=Path, help="default fonts/<font>/shape-naming/names.tsv")
