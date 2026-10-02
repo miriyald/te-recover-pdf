@@ -32,7 +32,7 @@ DEFAULT_PROFILE = FontProfile(
     frozenset({
         "Priyaanka", "PriyaankaBold", "PallaviBold", "Pragathi", "Prabhava", "Kranthi",
         "GowthamiThin", "GowthamiMedium", "GowthamiBold", "GowthamiBlack", "GowthamiExtraBold",
-        "AnupamaMedium", "AnupamaBold", "AnupamaExtraBold", "Dharani", "Brahma",
+        "AnupamaThin", "AnupamaMedium", "AnupamaBold", "AnupamaExtraBold", "GowthamiNarrow", "PallaviMedium", "Dharani", "Brahma",
     }),
     ascent=0.75, descent=0.35, byte_encoding="mac_roman", byte_overrides={0xC6: "Δ", 0xD0: "-", 0xDB: "¤"},
 )

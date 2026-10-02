@@ -32,6 +32,22 @@ Per volume: font families and how each stores its codes; conversion with both go
 - Three codes with different Unicode spellings of known Mac Roman bytes also need aliases: `∆` U+2206 (gold has `Δ` U+0394), `Ω` U+2126 (gold has U+03A9), and `–` U+2013 (byte 0xD0, gold has `-`).
 - `˛` (about 10,000 uses per volume) is a new code.
 
+## Run: the nine ready volumes (2, 4, 5, 6, 7, 10, 11, 14, 15)
+- All 15 PDFs moved to `files/<slug>/input/`. The `files/set` copy of Vol 3 was byte-identical to the one already in the layout and went to `archive/legacy-2026-10-01/duplicates/`.
+- Profile gains `AnupamaThin`, `GowthamiNarrow` and `PallaviMedium`.
+- Final output for both methods in `files/<slug>/output/<method>/` (about 6,600 pages), coverage 99.99–100%.
+- **Gold 2 (shape naming)** leaves 9 distinct unmapped sequences in 115 places:
+  - `∏` 34: the top of ొ over హ (హొయలు);
+  - `”` 23: drawn as `÷`, a word separator (ఇట్లు÷అనియెన్);
+  - `&` 10: ఞ (భుఞ్జీత, చఛజఝఞ);
+  - `˛` 7: drawn as `×`, between antonym pairs (రుచి×అరుచి);
+  - stray strokes in 41 places: `è` 33, `î` 4, `ä` 2, `¶` 1, `ù` 1, as in అతిథి⟦è⟧.
+- **Gold 1 (OCR learning)** leaves 59 distinct sequences in 811 places; it has not learned these volumes.
+- The methods give identical text on 85–99% of pages per volume; 661 differing places are gold 1 gaps. Only 55 are real disagreements, and gold 2 is right in all those I checked:
+  - gold 1 reads ఫ్యూడల్, ఫూత్కారము as ఘ్యాడల్, ఘాత్కారము;
+  - gold 1 writes ే as ేె (Vols 2, 14, 15);
+  - Vol 14 has ◌ె left over in gold 2, and an extra ె in gold 1, where the print reads కే / వారే.
+
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).
 - Which volume to take next. The ready group is the cheapest: add the families, run `convert`, and review the rare codes.
