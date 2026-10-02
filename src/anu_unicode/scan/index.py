@@ -94,18 +94,19 @@ def write_tsv(path: Path, header: str, rows: Iterable[str]) -> None:
     path.write_text("\n".join([header, *rows]) + "\n", encoding="utf-8", newline="\n")
 
 
-def write_index(out: Path, index: ShapeIndex) -> AlphabetStats:
+def write_index(out: Path, index: ShapeIndex, excluded: frozenset[int] = frozenset()) -> AlphabetStats:
     shutil.rmtree(out, ignore_errors=True)
     (out / "shapes").mkdir(parents=True)
     catalog = index.catalog
     write_tsv(out / "occurrences.tsv", "page\tline\tword\tposition\tshape_id\tband\tleft\ttop\tright\tbottom", (
         f"{item.page}\t{item.line}\t{item.word}\t{item.position}\t{item.shape_id}\t{item.band}\t" + "\t".join(map(str, item.bbox))
         for item in index.occurrences))
-    ranked = [shape_id for shape_id in index.by_frequency() if catalog.counts[shape_id]]
+    live = [shape_id for shape_id in index.by_frequency() if catalog.counts[shape_id]]
+    ranked = [shape_id for shape_id in live if shape_id not in excluded]
     write_tsv(out / "shapes.tsv", "shape_id\tcount\tband\tholes\theight\taspect\tpages", (
         f"{shape_id}\t{int(catalog.counts[shape_id])}\t{tuple(Band)[catalog.bands[shape_id]]}\t{catalog.holes[shape_id]}\t"
         f"{catalog.heights[shape_id]:.2f}\t{catalog.aspects[shape_id]:.2f}\t{len(index.pages[shape_id])}" for shape_id in ranked))
-    for shape_id in ranked:
+    for shape_id in live:
         member_strip(catalog.prototype(shape_id), index.members[shape_id]).save(out / "shapes" / f"{shape_id}.png")
     rows = "".join(
         f"<tr><td>#{shape_id}</td><td>{int(catalog.counts[shape_id])}</td><td>{html.escape(str(tuple(Band)[catalog.bands[shape_id]]))}</td>"
@@ -114,6 +115,6 @@ def write_index(out: Path, index: ShapeIndex) -> AlphabetStats:
         "<!doctype html><meta charset=\"utf-8\"><title>Scan shapes</title><style>body{font:14px sans-serif}td{padding:2px 8px;"
         "border-bottom:1px solid #ddd}img{height:40px}</style><table><tr><th>id</th><th>count</th><th>band</th><th>holes</th>"
         f"<th>prototype · members</th></tr>{rows}</table>\n", encoding="utf-8", newline="\n")
-    stats = alphabet_stats(catalog.counts)
+    stats = alphabet_stats(catalog.counts[shape_id] for shape_id in ranked)
     write_tsv(out / "growth.tsv", "page\tnew_shapes", (f"{page}\t{count}" for page, count in index.new_per_page.items()))
     return stats

@@ -43,3 +43,16 @@ def test_strips_from_an_earlier_run_are_removed(tmp_path: Path) -> None:
     write_index(tmp_path, index)
 
     assert sorted(path.name for path in (tmp_path / "shapes").iterdir()) == ["0.png"]
+
+
+def test_excluded_ids_leave_the_sheet_and_the_statistics(tmp_path: Path) -> None:
+    index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
+    ring = np.ones((50, 50), dtype=bool)
+    ring[8:-8, 8:-8] = False
+    index.add(ScanPage(4, 50.0, [[_word(np.ones((50, 50), dtype=bool), ring)]]))
+
+    stats = write_index(tmp_path, index, excluded=frozenset({0}))
+
+    assert stats.shapes == 1
+    assert [line.split("\t")[0] for line in (tmp_path / "shapes.tsv").read_text(encoding="utf-8").splitlines()[1:]] == ["1"]
+    assert (tmp_path / "shapes" / "0.png").exists()

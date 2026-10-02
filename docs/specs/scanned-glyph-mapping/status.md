@@ -127,8 +127,16 @@ may share a name). Only ambiguity *between different letters* matters, and that 
 - Catalog: `files/<book>/state/scan-catalog.npz` (generated, > 100 KB, not in git). Risk: the committed `names.tsv` is keyed by ids that only
   this file defines, so the catalog must be kept (or archived) alongside it
 
+- Whole body frozen: 4,870 ids over 97,502 components (2,239 singletons; 3,895 ids for 99 %). First atlas: 1,949 ids ≥ 3 (96.3 % of
+  ink); Tesseract gave a ≥ 4/5 majority on 542 ids (35.5 % of ink) and is systematically wrong on క ("కిర")
+- **Exclusion list** `fonts/scan-prasaaskhara/scan/excluded.tsv` (user-curated, committed): ids left out of every list (atlas rows and
+  "looks the same", index sheet and statistics, ambiguity report). `occurrences.tsv` stays complete, so an exclusion can be undone.
+  Round 1: 56 ids, all `=` bar halves above and below the line, 16,103 occurrences (16.5 %). Atlas after it: 1,893 ids, 77,796 occurrences
+- Open: excluded ids drop out of the lists only; whether they also contribute nothing in conversion is decided at the convert step
+  (`=` is the headword/meaning separator in this book)
+
 ## In progress
-- Whole-body v3 run (pages 4–195) with `--write-catalog`, then the first `scan-atlas` run
+- User labels the atlas
 
 ## Blocked / open issues
 - JIRA ID not given

@@ -66,14 +66,14 @@ class AtlasRow:
     words: tuple[str, ...]
 
 
-def ranked_ids(occurrences: Iterable[Occurrence], min_count: int) -> list[tuple[int, int, str]]:
+def ranked_ids(occurrences: Iterable[Occurrence], min_count: int, excluded: frozenset[int]) -> list[tuple[int, int, str]]:
     counts: Counter[int] = Counter()
     bands: dict[int, str] = {}
     for item in occurrences:
         counts[item.shape_id] += 1
         bands[item.shape_id] = str(item.band)
     return [(shape_id, count, bands[shape_id]) for shape_id, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-            if count >= min_count]
+            if count >= min_count and shape_id not in excluded]
 
 
 def spread(items: list[Occurrence], limit: int) -> list[Occurrence]:
@@ -118,9 +118,9 @@ def _passing(catalog: ShapeCatalog, canvases: list[Bitmap], other: int) -> int:
     return sum(thick_blob(canvas, catalog.canvases.bitmaps[other]) <= MAX_THICK_BLOB for canvas in canvases)
 
 
-def same_shape_ids(catalog: ShapeCatalog, shape_id: int, crops: list[Crop]) -> tuple[int, ...]:
+def same_shape_ids(catalog: ShapeCatalog, shape_id: int, crops: list[Crop], excluded: frozenset[int]) -> tuple[int, ...]:
     distances = catalog.distances(catalog.prototype_shape(shape_id))
-    distances[shape_id] = np.inf
+    distances[[shape_id, *excluded]] = np.inf
     candidates = [int(index) for index in np.argsort(distances, kind="stable")[:SUGGEST_CANDIDATES] if distances[index] <= SUGGEST_STRAY]
     canvases = [to_canvas(crop.mask, crop.body_height) for crop in crops]
     return tuple(other for other in candidates if _passing(catalog, canvases, other) >= SUGGEST_SHARE * len(canvases))
@@ -131,6 +131,7 @@ class AtlasInput:
     document: pymupdf.Document
     occurrences: list[Occurrence]
     catalog: ShapeCatalog
+    excluded: frozenset[int]
 
 
 @dataclass(frozen=True)
@@ -193,7 +194,7 @@ def propose_all(crops: Mapping[int, list[Crop]], ocr: Ocr) -> dict[int, tuple[st
 
 
 def build_rows(source: AtlasInput, min_count: int, out: Path, ocr: Ocr) -> list[AtlasRow]:
-    ranked = ranked_ids(source.occurrences, min_count)
+    ranked = ranked_ids(source.occurrences, min_count, source.excluded)
     members: dict[int, list[Occurrence]] = defaultdict(list)
     for item in source.occurrences:
         members[item.shape_id].append(item)
@@ -201,8 +202,9 @@ def build_rows(source: AtlasInput, min_count: int, out: Path, ocr: Ocr) -> list[
     examples = {shape_id: spread(members[shape_id], EXAMPLE_WORDS) for shape_id, _, _ in ranked}
     samples = collect_samples(source, wanted, examples, out)
     proposals = propose_all(samples.crops, ocr)
-    return [AtlasRow(shape_id, count, band, *proposals[shape_id], same_shape_ids(source.catalog, shape_id, samples.crops[shape_id]),
-                     tuple(samples.words[shape_id])) for shape_id, count, band in ranked]
+    return [AtlasRow(shape_id, count, band, *proposals[shape_id],
+                     same_shape_ids(source.catalog, shape_id, samples.crops[shape_id], source.excluded), tuple(samples.words[shape_id]))
+            for shape_id, count, band in ranked]
 
 
 def _input(css_class: str, value: str) -> str:

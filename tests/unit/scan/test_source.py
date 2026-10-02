@@ -2,7 +2,7 @@ from pathlib import Path
 
 from anu_unicode.convert import Coverage, convert_anu
 from anu_unicode.scan.index import Occurrence
-from anu_unicode.scan.source import read_occurrences, scan_words, shape_char, shape_id_of
+from anu_unicode.scan.source import read_excluded, read_occurrences, scan_words, shape_char, shape_id_of
 from anu_unicode.scan.words import Band
 from anu_unicode.shape_naming.shapes import Shape, compile_mapping
 
@@ -39,3 +39,11 @@ def test_occurrences_are_read_back_from_the_index_file(tmp_path: Path) -> None:
     path.write_text(header + "4\t1\t2\t3\t9\tbelow\t1\t2\t3\t4\n", encoding="utf-8")
 
     assert read_occurrences(path) == [Occurrence(4, 1, 2, 3, 9, Band.BELOW, (1, 2, 3, 4))]
+
+
+def test_excluded_ids_are_read_from_their_list(tmp_path: Path) -> None:
+    path = tmp_path / "excluded.tsv"
+    path.write_text("shape_id\n845\n850\n", encoding="utf-8")
+
+    assert read_excluded(path) == {845, 850}
+    assert read_excluded(tmp_path / "missing.tsv") == frozenset()

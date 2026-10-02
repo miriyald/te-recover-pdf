@@ -22,6 +22,10 @@ def shape_id_of(char: str) -> int:
     return ord(char) - SHAPE_BASE
 
 
+def read_excluded(path: Path) -> frozenset[int]:
+    return frozenset(int(row["shape_id"]) for row in read_rows(path))
+
+
 def read_occurrences(path: Path) -> list[Occurrence]:
     return [
         Occurrence(int(row["page"]), int(row["line"]), int(row["word"]), int(row["position"]), int(row["shape_id"]), Band(row["band"]),

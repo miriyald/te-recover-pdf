@@ -10,7 +10,7 @@ from anu_unicode.scan.atlas import AtlasInput, Ocr, build_rows, tesseract_readin
 from anu_unicode.scan.catalog import ShapeCatalog, Thresholds, load_catalog
 from anu_unicode.scan.index import ShapeIndex, write_index
 from anu_unicode.scan.page import ScanPage, scan_page
-from anu_unicode.scan.source import read_occurrences
+from anu_unicode.scan.source import read_excluded, read_occurrences
 from anu_unicode.shape_naming.shapes import load_shapes
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
 
 
 def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: list[ScanPage]) -> None:
-    report = check_index(index, pages)
+    report = check_index(index, pages, read_excluded(arguments.excluded))
     out = arguments.layout.intermediate("scan-ambiguity")
     write_ambiguity(out, report, index.catalog, "../scan-index/shapes")
     verdicts = report.verdicts()
@@ -40,7 +40,7 @@ def _scan_index(arguments: argparse.Namespace) -> None:
     for page in pages:
         index.add(page)
     out = arguments.layout.intermediate("scan-index")
-    stats = write_index(out, index)
+    stats = write_index(out, index, read_excluded(arguments.excluded))
     if arguments.write_catalog:
         index.catalog.save(arguments.catalog)
     if arguments.ambiguity:
@@ -54,7 +54,7 @@ def _scan_atlas(arguments: argparse.Namespace) -> None:
     layout = arguments.layout
     occurrences = read_occurrences(layout.intermediate("scan-index") / "occurrences.tsv")
     out = layout.intermediate("scan-atlas")
-    source = AtlasInput(pymupdf.open(arguments.pdf), occurrences, load_catalog(arguments.catalog))
+    source = AtlasInput(pymupdf.open(arguments.pdf), occurrences, load_catalog(arguments.catalog), read_excluded(arguments.excluded))
     ocr = Ocr(lambda mask: tesseract_reading(mask, arguments.tesseract), layout.state / "scan-ocr.tsv")
     rows = build_rows(source, arguments.min_count, out, ocr)
     write_scan_atlas(out / "atlas.html", rows, {shape.glyph: shape for shape in load_shapes(arguments.names)}, "../scan-index/shapes")
@@ -71,10 +71,12 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     index.add_argument("--max-stray", type=float, default=0.2, help="pre-filter: share of ink further than 1 grid pixel from the prototype")
     index.add_argument("--max-height-drift", type=float, default=0.2, help="abs log height difference, in body heights")
     index.add_argument("--max-aspect-drift", type=float, default=0.25, help="abs log aspect-ratio difference")
+    index.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
     index.add_argument("--ambiguity", action="store_true",
                        help="re-check every occurrence against the final shapes; report ambiguous and drifted ones separately")
     index.set_defaults(handler=_scan_index)
     atlas = commands.add_parser("scan-atlas", help=f"{SCAN} labelling sheet: one row per shape id with crops and a Tesseract proposal")
     atlas.add_argument("--min-count", type=int, default=3, help="list ids seen at least this often")
+    atlas.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
     atlas.add_argument("--names", type=Path, help="names to pre-fill; default fonts/<font>/shape-naming/names.tsv")
     atlas.set_defaults(handler=_scan_atlas)

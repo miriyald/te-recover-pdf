@@ -79,8 +79,9 @@ def _pair(first: int, second: int) -> Pair:
     return (first, second) if first < second else (second, first)
 
 
-def matching_ids(catalog: ShapeCatalog, shape: Shape) -> tuple[Match, ...]:
+def matching_ids(catalog: ShapeCatalog, shape: Shape, excluded: frozenset[int] = frozenset()) -> tuple[Match, ...]:
     distances = catalog.distances(shape)
+    distances[list(excluded)] = np.inf
     candidates = [index for index in np.argsort(distances, kind="stable")[:CANDIDATES] if distances[index] <= WIDE_STRAY]
     blobs = [(int(index), thick_blob(shape.canvas, catalog.canvases.bitmaps[index])) for index in candidates]
     return tuple(sorted(((index, blob) for index, blob in blobs if blob <= MAX_THICK_BLOB), key=lambda match: (match[1], match[0])))
@@ -94,20 +95,22 @@ def _placed_glyphs(pages: list[ScanPage]) -> Iterator[tuple[ScanPage, Bitmap, Sh
                     yield page, placed.component.mask, shape_of(placed.component, placed.band, page.body_height)
 
 
-def check_index(index: ShapeIndex, pages: list[ScanPage]) -> AmbiguityReport:
+def check_index(index: ShapeIndex, pages: list[ScanPage], excluded: frozenset[int] = frozenset()) -> AmbiguityReport:
     report = AmbiguityReport()
     for occurrence, (_, mask, shape) in zip(index.occurrences, _placed_glyphs(pages), strict=True):
-        check = Check(occurrence, matching_ids(index.catalog, shape))
+        if occurrence.shape_id in excluded:
+            continue
+        check = Check(occurrence, matching_ids(index.catalog, shape, excluded))
         report.checks.append(check)
         for rival in check.rivals:
             crops = report.pair_crops.setdefault(_pair(occurrence.shape_id, rival), [])
             if len(crops) < PAIR_CROPS:
                 crops.append(mask)
     catalog = index.catalog
-    for shape_id in np.flatnonzero(catalog.counts):
-        for other, _ in matching_ids(catalog, catalog.prototype_shape(int(shape_id))):
+    for shape_id in (int(shape_id) for shape_id in np.flatnonzero(catalog.counts) if shape_id not in excluded):
+        for other, _ in matching_ids(catalog, catalog.prototype_shape(shape_id), excluded):
             if other != shape_id and catalog.counts[other]:
-                report.prototype_pairs.add(_pair(int(shape_id), other))
+                report.prototype_pairs.add(_pair(shape_id, other))
     return report
 
 

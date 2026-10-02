@@ -37,7 +37,13 @@ def _ring() -> np.ndarray:
 def test_ids_are_ranked_by_count_and_rare_ones_left_out() -> None:
     occurrences = [_occurrence(2), _occurrence(5), _occurrence(5), _occurrence(5), _occurrence(2), _occurrence(9)]
 
-    assert ranked_ids(occurrences, min_count=2) == [(5, 3, "main"), (2, 2, "main")]
+    assert ranked_ids(occurrences, min_count=2, excluded=frozenset()) == [(5, 3, "main"), (2, 2, "main")]
+
+
+def test_excluded_ids_are_left_out_of_the_atlas() -> None:
+    occurrences = [_occurrence(2), _occurrence(5), _occurrence(5), _occurrence(2)]
+
+    assert ranked_ids(occurrences, min_count=1, excluded=frozenset({5})) == [(2, 2, "main")]
 
 
 def test_samples_are_spread_over_all_occurrences() -> None:
@@ -81,7 +87,8 @@ def test_an_id_whose_members_pass_another_prototype_is_suggested_as_the_same() -
         catalog._add(shape_of(Component((0, 0, 50, 50), mask), Band.MAIN, BODY))  # pylint: disable=protected-access
         catalog.counts[-1] = 1
 
-    assert same_shape_ids(catalog, 1, [Crop(_ring(), BODY)]) == (0,)
+    assert same_shape_ids(catalog, 1, [Crop(_ring(), BODY)], frozenset()) == (0,)
+    assert not same_shape_ids(catalog, 1, [Crop(_ring(), BODY)], frozenset({0}))
 
 
 def test_atlas_rows_carry_the_private_use_glyph_and_prefilled_names(tmp_path: Path) -> None:
