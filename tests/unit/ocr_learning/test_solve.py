@@ -10,9 +10,15 @@ def test_single_gap_resolved_through_subscript_reorder_elsewhere_in_word() -> No
 
 
 def test_target_without_zwnj_solves_a_word_ending_in_a_visible_virama() -> None:
-    segments = [("=∞", "మ"), ("~°∞", "రు"), ("H", None), ("±", "్‌")]
+    segments = [("=∞", "మ"), ("~°∞", "రు"), ("H", None), ("±", "్\u200c")]
 
     assert solve_confirmed(segments, "మరుక్") == {"H": "క"}
+
+
+def test_target_with_zwnj_picks_the_visible_virama_that_reproduces_it() -> None:
+    segments = [("_®", "డా"), ("Hõ", "క"), ("ì", "్ట"), ("~", "ర"), ("ü", None)]
+
+    assert solve_confirmed(segments, "డాక్టర్\u200c") == {"ü": "్\u200c"}
 
 
 def test_pre_base_ra_gap_resolves_to_placeholder() -> None:

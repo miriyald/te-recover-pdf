@@ -28,6 +28,10 @@ def test_parse_keeps_equals_glyph_inside_gap() -> None:
     assert parse_confirmations("క⟦=∞⟧ = కమ") == [Confirmation("క⟦=∞⟧", "కమ")]
 
 
+def test_parse_keeps_an_equals_sign_that_is_part_of_the_tab_separated_text() -> None:
+    assert parse_confirmations("ఇట్లు⟦´⟧\tఇట్లు=") == [Confirmation("ఇట్లు⟦´⟧", "ఇట్లు=")]
+
+
 def test_confirmation_adds_entry_with_audit_and_clears_pending() -> None:
     state = _state({"âß": "శా", "ã≤Î": "స్తి"}, [Proposal("¢", "(", 1, 4, "(స్తి", {"శా|స్తి"})])
 

@@ -23,9 +23,17 @@ def _pattern(segments: Sequence[Segment], gap_names: dict[str, str]) -> re.Patte
     return re.compile("".join(parts))
 
 
+def _rendered(segments: Sequence[Segment], solution: Solution) -> str:
+    return normalise("".join(solution[glyphs] if unicode is None else unicode for glyphs, unicode in segments))
+
+
 def _renders(segments: Sequence[Segment], solution: Solution, target: str) -> bool:
-    rendered = normalise("".join(solution[glyphs] if unicode is None else unicode for glyphs, unicode in segments))
-    return comparable(rendered) == comparable(target)
+    return comparable(_rendered(segments, solution)) == comparable(target)
+
+
+def _prefer_exact(segments: Sequence[Segment], solutions: list[Solution], target: str) -> list[Solution]:
+    exact = [solution for solution in solutions if _rendered(segments, solution) == normalise(target)]
+    return exact or solutions
 
 
 def _substrings(texts: set[str]) -> set[str]:
@@ -36,7 +44,8 @@ def gap_solutions(segments: Sequence[Segment], target: str) -> list[Solution]:
     gap_names = {glyphs: f"g{index}" for index, glyphs in enumerate(dict.fromkeys(g for g, u in segments if u is None))}
     if len(gap_names) == 1:
         glyphs = next(iter(gap_names))
-        return [{glyphs: value} for value in sorted(_substrings(anu_orders(target))) if _renders(segments, {glyphs: value}, target)]
+        found = [{glyphs: value} for value in sorted(_substrings(anu_orders(target))) if _renders(segments, {glyphs: value}, target)]
+        return _prefer_exact(segments, found, target)
     if not gap_names:
         return []
     pattern = _pattern(segments, gap_names)
@@ -48,7 +57,7 @@ def gap_solutions(segments: Sequence[Segment], target: str) -> list[Solution]:
         solution = {glyphs: normalise(match.group(name)) for glyphs, name in gap_names.items()}
         if _renders(segments, solution, target) and solution not in solutions:
             solutions.append(solution)
-    return solutions
+    return _prefer_exact(segments, solutions, target)
 
 
 def gap_candidates(segments: Sequence[Segment], target: str) -> set[str]:

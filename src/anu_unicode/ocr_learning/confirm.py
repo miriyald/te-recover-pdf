@@ -12,6 +12,7 @@ from anu_unicode.telugu import comparable
 
 GAP = re.compile("⟦(.*?)⟧")
 SEPARATOR = re.compile(r"\s*=\s*|\t+")
+TAB = re.compile(r"(?:\s+=)?\s*\t+\s*(?:=\s+)?")
 MAX_PASSES = 3
 CORRECTION = "correction of mapped text: needs review"
 
@@ -34,7 +35,8 @@ class ConfirmationResult:
 def _split(line: str) -> list[str]:
     gaps = iter(GAP.findall(line))
     masked = GAP.sub("⟦⟧", line)
-    parts = [part.strip() for part in SEPARATOR.split(masked.strip()) if part.strip()]
+    separator = TAB if "\t" in masked else SEPARATOR
+    parts = [part.strip() for part in separator.split(masked.strip()) if part.strip()]
     return [re.sub("⟦⟧", lambda _: f"⟦{next(gaps)}⟧", part) for part in parts]
 
 

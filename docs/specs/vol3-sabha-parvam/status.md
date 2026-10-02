@@ -26,8 +26,19 @@ in progress: gold 2 covers Vol 3; gold 1 still has to learn the new codes
   - Mahabharatamu: all 449 pages byte-identical; `compare` 0 differences.
   - 152 tests pass, lint clean.
 
+- Gold 1 on Vol 3, batch 1 (`learn` over all 404 pages, 340 OCR calls):
+  - 11 entries learned; 9 were right and 2 were Tesseract misreads (`II` → `!`, `ñ` → `(`).
+  - With OCR votes, all 513 words where OCR voted against gold 2 were the same two misreads; gold 2 was right.
+  - `confirm` with the user's confirmations added `´` =, `ü` ్‌, `Ñ¶π` ఫ్‌, `Õ` ే, `á¶È` ఫొ, `ãπ` స్‌, `"£∞` మ్‌, `` `«Êù `` త్ఫ.
+  - Hand fixes for the held overrides: `II` → `||`, `ñ` → ఁ. Visible-virama entries carry the ZWNJ.
+- Two `confirm` fixes found on the way:
+  - `=` attached to tab-separated text was taken as a separator;
+  - the solver gave up when the only difference between two answers was a ZWNJ; it now keeps the one that reproduces the confirmed text exactly.
+- Gold 2 recipe `va_base virama u_hook` → మ్‌ (నరోత్తమమ్, వాల్యూమ్): the user's తన్ముఖమ్ confirmation showed gold 2 rendered వ్‌ు.
+- Result: Vol 3 `compare` fell from 7,265 difference groups to 37; Mahabharatamu still has 0 and is byte-identical to the baseline.
+
 ## In progress
-- Gold 1 does not yet know the new codes, so the Vol 3 `compare` shows 8,643 groups that are gold 1 gaps.
+- Gold 1 batch 2: the remaining gaps (`I` alone 827, `చ.` 34, `ఆంధ్రప్రదేశ్‌` 6, a few single words).
 
 ## Blocked / open issues
 - A stray `è` (stroke_low + tick, drawn over a complete థ/ధ) is left as an unmapped gap in ప్రథ⟦è⟧మ and దుర్యోధ⟦è⟧నాది. It looks like a typist's overstrike.
