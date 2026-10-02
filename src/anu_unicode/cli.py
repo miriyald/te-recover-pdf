@@ -53,6 +53,9 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
     if arguments.book:
         arguments.layout = BookLayout(arguments.book)
         state = arguments.layout.state
+        book_profile = font / "books" / f"{arguments.book}.json"
+        if book_profile.exists():
+            defaults["profile"] = book_profile
         defaults |= {"pending": state / "pending.tsv", "progress": state / "progress.tsv", "suspicious": state / "suspicious.tsv",
                      "ocr_cache": state / "ocr-cache", "verified": state / "verified"}
     if arguments.command == "shapes":
@@ -185,7 +188,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="anu-unicode", description=DESCRIPTION)
     parser.add_argument("--font", default="anu", help="font encoding folder under fonts/ holding the profile and both approaches' gold")
     parser.add_argument("--book", help="book folder under files/ (its PDF is the one in input/), e.g. mahabharatamu")
-    parser.add_argument("--profile", type=Path, help="font profile JSON (see the probe command); default fonts/<font>/profile.json")
+    parser.add_argument("--profile", type=Path, help="default fonts/<font>/books/<book>.json if present, else fonts/<font>/profile.json")
     parser.add_argument("--mapping", type=Path, help="approach 1 mapping; default fonts/<font>/ocr-learning/mapping.tsv")
     parser.add_argument("--pending", type=Path, help="default files/<book>/state/pending.tsv")
     parser.add_argument("--progress", type=Path, help="default files/<book>/state/progress.tsv")

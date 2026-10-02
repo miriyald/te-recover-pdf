@@ -72,21 +72,36 @@ def _anu_bbox(char: dict[str, Any], size: float, profile: FontProfile) -> Rect:
     return (char["bbox"][0], baseline - profile.ascent * size, char["bbox"][2], baseline + profile.descent * size)
 
 
-def _span_glyphs(span: dict[str, Any], profile: FontProfile) -> list[Glyph]:
-    if font_family(span["font"]) not in profile.anu_fonts:
+def _anu_char(char: str, profile: FontProfile, translated: bool) -> str:
+    if ord(char) in SYMBOL_CODES:
+        return profile.byte_char(ord(char) - SYMBOL_BASE)
+    if translated and char in profile.type1_codes:
+        return profile.byte_char(profile.type1_codes[char])
+    return profile.canonical(char)
+
+
+def _span_glyphs(span: dict[str, Any], profile: FontProfile, type1: frozenset[str]) -> list[Glyph]:
+    family = font_family(span["font"])
+    if family not in profile.anu_fonts:
         return [Glyph(_char(char["c"], chr), tuple(char["bbox"]), char["origin"][0], is_anu=False) for char in span["chars"]]
-    return [Glyph(_char(char["c"], profile.byte_char), _anu_bbox(char, span["size"], profile), char["origin"][0], is_anu=True)
+    translated = family in type1
+    return [Glyph(_anu_char(char["c"], profile, translated), _anu_bbox(char, span["size"], profile), char["origin"][0], is_anu=True)
             for char in span["chars"]]
 
 
+def font_families(page: pymupdf.Page, kind: str) -> frozenset[str]:
+    return frozenset(font_family(font[3]) for font in page.get_fonts() if font[2] == kind)
+
+
 def type3_families(page: pymupdf.Page) -> frozenset[str]:
-    return frozenset(font_family(font[3]) for font in page.get_fonts() if font[2] == "Type3")
+    return font_families(page, "Type3")
 
 
 def page_lines(page: pymupdf.Page, profile: FontProfile = DEFAULT_PROFILE) -> list[list[Glyph]]:
     undecodable = type3_families(page)
+    type1 = font_families(page, "Type1") if profile.type1_codes and page.number + 1 not in profile.type1_plain_pages else frozenset()
     raw_lines = [
-        (spans[0]["origin"][1], line["bbox"][0], [glyph for span in spans for glyph in _span_glyphs(span, profile)])
+        (spans[0]["origin"][1], line["bbox"][0], [glyph for span in spans for glyph in _span_glyphs(span, profile, type1)])
         for block in page.get_text("rawdict")["blocks"]
         for line in block.get("lines", [])
         if (spans := [span for span in line["spans"] if font_family(span["font"]) not in undecodable])

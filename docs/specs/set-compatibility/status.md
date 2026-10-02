@@ -93,6 +93,13 @@ Per volume: font families and how each stores its codes; conversion with both go
   - Every Anu byte is used exactly once (226 glyphs against 214 known bytes), so the leftover glyphs must take the leftover bytes. An optimal assignment agrees with the best match on about 200 of 226 glyphs; hiding 25% of the unambiguous matches and solving them recovers 25 of 30 for Pallavi (10 of 10 each for the other two, from tiny samples).
   - So a translation table from shape matching plus assignment gets most of it; the doubtful glyphs need to be checked by eye.
 
+## Volumes 8, 9, 12 and 13: converted (see `type1-layout.md`)
+- Each Type1 glyph is matched to its Anu byte (`fonts/anu/type1-layout.tsv`, built by `scripts/build_type1_layout.py`); the golds then convert as for any other volume. Per-book profiles are in `fonts/anu/books/`.
+- Vol 13 page 425 uses conventional fonts and is listed as a plain page.
+- Result: 16 books finished with gold 2, 0 unmapped sequences everywhere, no conventional book changed. Vol 1 pages 1 and 3–22 (Type3 front matter) are skipped on purpose.
+- Vocabulary check: 16–22.5% of the converted words are unseen in the other volumes, against 20–21.5% for a conventional volume tested the same way.
+- Not yet done: a visual check of the 25 ambiguous Type1 characters (the vocabulary test settled them with large margins); OCR agreement only measured on Vol 8.
+
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).
 - Which volume to take next. The ready group is the cheapest: add the families, run `convert`, and review the rare codes.

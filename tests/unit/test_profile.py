@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -50,6 +51,28 @@ def test_byte_decoding_round_trips_through_json(tmp_path: Path) -> None:
 
 def test_anu_bytes_decode_as_mac_roman_except_the_overrides() -> None:
     assert [DEFAULT_PROFILE.byte_char(byte) for byte in (0x3D, 0xB0, 0xC6, 0xD0, 0xDB)] == ["=", "∞", "Δ", "-", "¤"]
+
+
+def test_type1_layout_loads_confirmed_bytes_over_matched_ones(tmp_path: Path) -> None:
+    layout = tmp_path / "layout.tsv"
+    layout.write_text("char\tcodepoint\tbyte\tscore\tmargin\tstatus\tconfirmed\n"
+                      "V\t0056\t41\t0.9\t0.1\tsure\t\nW\t0057\t45\t0.9\t0.1\tlikely\t46\n%\t0025\t\t0.5\t0\tnone\t\n", encoding="utf-8")
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps({"anu_fonts": ["Foo"], "ascent": 0.7, "descent": 0.3, "type1_layout": str(layout),
+                                "type1_plain_pages": [425]}), encoding="utf-8")
+
+    profile = load_profile(path)
+
+    assert profile.type1_codes == {"V": 0x41, "W": 0x46}
+    assert profile.type1_plain_pages == {425}
+    save_profile(tmp_path / "again.json", profile)
+    assert load_profile(tmp_path / "again.json") == profile
+
+
+def test_alternate_spellings_of_a_known_byte_become_its_anu_character() -> None:
+    spellings = ["∆", "Ω", "–", "=", "క"]
+
+    assert [DEFAULT_PROFILE.canonical(char) for char in spellings] == ["Δ", "Ω", "-", "=", "క"]
 
 
 def test_char_byte_inverts_byte_char() -> None:

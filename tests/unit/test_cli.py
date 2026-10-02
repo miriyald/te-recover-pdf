@@ -49,6 +49,22 @@ def test_font_assets_and_book_state_resolve_to_their_folders() -> None:
     assert not vars(arguments)["mapping_given"]
 
 
+def test_a_book_with_its_own_profile_file_uses_it() -> None:
+    arguments = _arguments("convert", book="maha-bharatham-vol-8-bheshma-parvam")
+
+    resolve_paths(arguments)
+
+    assert arguments.profile == FONT / "books" / "maha-bharatham-vol-8-bheshma-parvam.json"
+
+
+def test_book_profiles_extend_the_anu_profile_with_the_type1_layout() -> None:
+    for path in (FONT / "books").glob("*.json"):
+        profile = load_profile(path)
+
+        assert profile.anu_fonts == DEFAULT_PROFILE.anu_fonts
+        assert profile.type1_layout_file == "fonts/anu/type1-layout.tsv" and len(profile.type1_codes) > 200
+
+
 def test_explicit_paths_are_kept() -> None:
     arguments = _arguments("convert", mapping=Path("other.tsv"))
 

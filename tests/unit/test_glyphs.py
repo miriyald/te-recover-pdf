@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -74,6 +75,29 @@ def test_text_in_type3_fonts_is_skipped_because_its_codes_mean_nothing() -> None
 
     assert ["".join(glyph.char for glyph in line) for line in lines] == ["=∞"]
     assert type3_families(page) == {"M"}
+
+
+def test_type1_characters_are_translated_to_anu_characters_only_when_the_profile_has_a_layout() -> None:
+    page = MagicMock()
+    page.get_fonts.return_value = [(7, "cff", "Type1", "ABCDEF+PallaviBold", "F3", "")]
+    page.get_text.return_value = {"blocks": [{"lines": [_line("PallaviBold", [_char("V", 80, 6, 100.0), _char("æ", 86, 3, 100.0)])]}]}
+    profile = replace(DEFAULT_PROFILE, type1_codes={"V": 0x41, "æ": 0xAC})
+
+    translated = ["".join(glyph.char for glyph in line) for line in page_lines(page, profile)]
+    untouched = ["".join(glyph.char for glyph in line) for line in page_lines(page)]
+
+    assert translated == [DEFAULT_PROFILE.byte_char(0x41) + DEFAULT_PROFILE.byte_char(0xAC)]
+    assert untouched == ["Væ"]
+
+
+def test_pages_listed_as_plain_keep_their_type1_characters() -> None:
+    page = MagicMock()
+    page.number = 424
+    page.get_fonts.return_value = [(7, "cff", "Type1", "ABCDEF+PallaviBold", "F3", "")]
+    page.get_text.return_value = {"blocks": [{"lines": [_line("PallaviBold", [_char("V", 80, 6, 100.0)])]}]}
+    profile = replace(DEFAULT_PROFILE, type1_codes={"V": 0x41}, type1_plain_pages=frozenset({425}))
+
+    assert ["".join(glyph.char for glyph in line) for line in page_lines(page, profile)] == ["V"]
 
 
 def test_style_suffix_does_not_hide_an_anu_family() -> None:

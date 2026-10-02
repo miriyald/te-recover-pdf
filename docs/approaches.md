@@ -32,6 +32,7 @@ flowchart LR
   - `state/`: learn state (`progress.tsv`, `pending.tsv`, `suspicious.tsv`), `ocr-cache/` and `verified/`.
 - `archive/<book>/<method>/<timestamp>/` keeps a previous final output, moved there when a method is rerun; `archive/<book>/batches/` keeps approved learn batches.
 - `--font` (default `anu`) picks the gold and `--book` the book folder; explicit path options still win.
+- `fonts/<encoding>/books/<book>.json` is an optional per-book profile (used automatically). The Type1-layout volumes use it to point at `fonts/<encoding>/type1-layout.tsv`; see `docs/specs/set-compatibility/type1-layout.md`.
 
 ```
 anu-unicode --book mahabharatamu convert --method shape-naming         # final: files/mahabharatamu/output/shape-naming/
