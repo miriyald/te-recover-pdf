@@ -83,7 +83,7 @@ def test_whole_book_run_is_final_output_with_book_text_and_manifest(tmp_path: Pa
     assert (out / "page-1.unicode.txt").read_text(encoding="utf-8") == "first page\n"
     assert (out / "book.txt").read_text(encoding="utf-8") == "first page\n\fsecond page\n"
     assert (manifest["book"], manifest["source"], manifest["method"], manifest["pages"]) == ("tiny", "Tiny Book.pdf", "ocr-learning", 2)
-    assert list(manifest["mapping_sources"]) == [str(FONT / "ocr-learning" / "mapping.tsv")]
+    assert list(manifest["mapping_sources"]) == ["fonts/anu/ocr-learning/mapping.tsv"]
 
 
 def test_rerun_archives_the_previous_final_output(tmp_path: Path) -> None:
@@ -113,7 +113,7 @@ def test_shape_naming_compiles_the_gold_names_and_recipes(tmp_path: Path) -> Non
     _convert(_convert_arguments(layout, method="shape-naming"))
 
     manifest = json.loads((layout.output("shape-naming") / "manifest.json").read_text(encoding="utf-8"))
-    assert list(manifest["mapping_sources"]) == [str(FONT / "shape-naming" / "names.tsv"), str(FONT / "shape-naming" / "recipes.tsv")]
+    assert list(manifest["mapping_sources"]) == ["fonts/anu/shape-naming/names.tsv", "fonts/anu/shape-naming/recipes.tsv"]
 
 
 def test_clean_removes_only_intermediate_files(tmp_path: Path) -> None:

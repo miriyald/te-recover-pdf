@@ -96,7 +96,7 @@ def _convert(arguments: argparse.Namespace) -> None:
     (out / "unmapped.tsv").write_text("\n".join(report) + "\n", encoding="utf-8", newline="\n")
     write_manifest(out, Manifest(
         book=layout.slug, source=arguments.pdf.name, pdf_sha256=pdf_sha256, method=arguments.method,
-        mapping_sources={str(path): sha256(path) for path in sources.values()}, pages=len(texts),
+        mapping_sources={path.as_posix(): sha256(path) for path in sources.values()}, pages=len(texts),
         coverage=round(total.ratio, 6), unmapped_sequences=len(total.unmapped), created=now_stamp(),
     ))
     logger.info("conversion done", extra={"coverage": round(total.ratio, 4), "unmapped_sequences": len(total.unmapped),
