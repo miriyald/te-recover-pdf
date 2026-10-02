@@ -56,6 +56,8 @@ done: both golds convert Vol 3 completely and agree word for word
   - The two golds agree on every word of both books (Vol 3 107,903, Mahabharatamu 77,191).
   - All four final outputs have 100% coverage; Vol 3's 404 pages are byte-identical between the methods.
   - Mahabharatamu is unchanged from the baseline.
+- Approved: batch 1 (all 404 pages) copied to `files/maha-bharatham-vol-3-sabha-parvam/state/verified/` and archived to `archive/maha-bharatham-vol-3-sabha-parvam/batches/batch-1`. The batch pages were rebuilt first (32 were stale from before the `K«õ` stack) and matched the final output byte for byte.
+- The user confirmed కంఠీరవ; the line-split fragment stays ఠీరవ.
 - Left out on purpose: `రీ⟦î⟧రవ → రీరవ` (contradicts కంఠీరవ; the fragment is కంఠీ-రవ split over a line). It now reads ఠీరవ.
 
 ## In progress
