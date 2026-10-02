@@ -110,13 +110,6 @@ class GridPrototypes:
 
     def update(self, index: int, grid: Bitmap, count: float) -> None:
         self.sums[index] += grid.ravel()
-        self._refresh(index, count)
-
-    def absorb(self, target: int, source: int, count: float) -> None:
-        self.sums[target] += self.sums[source]
-        self._refresh(target, count)
-
-    def _refresh(self, index: int, count: float) -> None:
         self.bitmaps[index] = self.sums[index] / count >= PROTOTYPE_SHARE
         self.distance_maps[index] = _distance_map(self.bitmaps[index].reshape(GRID, GRID) > 0)
 
@@ -147,10 +140,6 @@ class CanvasPrototypes:
     def update(self, index: int, canvas: Bitmap, count: float) -> None:
         self.sums[index] += canvas
         self.bitmaps[index] = self.sums[index] / count >= PROTOTYPE_SHARE
-
-    def absorb(self, target: int, source: int, count: float) -> None:
-        self.sums[target] += self.sums[source]
-        self.bitmaps[target] = self.sums[target] / count >= PROTOTYPE_SHARE
 
 
 @dataclass
@@ -209,17 +198,6 @@ class ShapeCatalog:
         self.aspects[shape_id] += (shape.aspect - self.aspects[shape_id]) / count
         self.grids.update(shape_id, shape.grid, count)
         self.canvases.update(shape_id, shape.canvas, count)
-
-    def merge(self, targets: dict[int, int]) -> None:
-        for source, target in sorted(targets.items()):
-            source_count, target_count = self.counts[source], self.counts[target]
-            total = source_count + target_count
-            for values in (self.heights, self.aspects):
-                values[target] = (values[target] * target_count + values[source] * source_count) / total
-            self.counts[target], self.counts[source] = total, 0.0
-            if target >= self.frozen:
-                self.grids.absorb(target, source, total)
-                self.canvases.absorb(target, source, total)
 
     def prototype(self, shape_id: int) -> Bitmap:
         return self.grids.bitmap(shape_id)

@@ -1,7 +1,7 @@
 # Status: Scanned Telugu → Unicode via image glyph ids (Prasaaskhara Padakosamu)
 _Last updated: 2026-10-02_
 ## Current state
-in progress: Phase 1 (positions) and Phase 2 (alphabet) built. **Gate not met**; the cause is diagnosed (fused vowel signs)
+in progress: Phases 1–2 built; clustering v3 verified by the user on pages 100–147. Next: labelling
 
 ## Completed
 - Package `anu_unicode/scan/` + command `scan-index` (registered in `cli.py`):
@@ -106,17 +106,20 @@ neighbourhoods: neighbours match each other, the ends do not (ము: 30/52/180/
 fights this the wrong way: the merged prototype blurs, so drift triples. Ambiguity *between ids of the same letter* is harmless (several ids
 may share a name). Only ambiguity *between different letters* matters, and that needs to be measured on families, not ids.
 
+## Decisions (2026-10-02)
+- **Duplicates are accepted**: several ids may hold the same shape, as long as each id is pure. Clustering v3 (no split, no merge) is the alphabet.
+- Ambiguity is reframed around names: before naming, the match graph *suggests* names for ids of the same letter; after naming, an occurrence
+  matching ids with *different* names is a conflict ("shape that needs care"). That conflict list is the separate-processing queue.
+- OCR evidence comes from Tesseract only.
+- Removed after the history commit (98d5a5c): `split.py`, `merge.py` (and their tests and options), `scripts/index_glyphs.py` + `glyph_table.html.tmpl`
+
 ## In progress
-- Decision: id families from the match graph (see Next steps)
+- Labelling (Phase 4): image atlas per shape id, Tesseract pre-fill, match-graph suggestions
 
 ## Blocked / open issues
 - JIRA ID not given
-- `scripts/index_glyphs.py` + `glyph_table.html.tmpl` are superseded by `scan-index`. Remove them once the image atlas (Phase 4) replaces the label export
-- Nothing committed yet
 
-## Next steps (decision for the user)
-- **A. OCR-evidence labelling of ids (recommended).** Align IA and Tesseract words to scan words. A word whose akshara count matches
-  votes for each glyph-id tuple, and an id inherits the reading its tuples agree on. The human confirms ids in bulk from member strips and
-  resolves only conflicts. The long tail (ids with < 5 occurrences, ~2–3 % of ink) falls back to the OCR word.
-- **B. Duplicate merge suggestions.** A second-level grouping of prototypes, confirmed in the atlas, so one label covers several print-variant ids.
-- **C. Template subtraction** instead of straight cuts. Uncertain payoff; only if A/B leave a fused tail worth it.
+## Next steps
+1. Whole-body v3 run (pages 4–195) with `--write-catalog`, so ids stay stable once naming starts
+2. Labelling atlas + names, then the Phase 3 bridge into `shapes` / `convert` / `compare`
+3. Conflict check after naming

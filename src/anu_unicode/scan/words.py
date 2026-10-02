@@ -74,7 +74,7 @@ def _band(components: list[Component], body_height: float) -> tuple[int, int]:
     return int(np.median([component.bbox[1] for component in body])), int(np.median([component.bbox[3] for component in body]))
 
 
-def classify(component: Component, band: tuple[int, int]) -> Band:
+def _classify(component: Component, band: tuple[int, int]) -> Band:
     if _overlap((component.bbox[1], component.bbox[3]), band) >= MAIN_OVERLAP * component.height:
         return Band.MAIN
     return Band.ABOVE if component.bbox[3] <= (band[0] + band[1]) / 2 else Band.BELOW
@@ -105,7 +105,7 @@ def page_words(components: list[Component], body_height: float, word_gap: float,
     words = []
     for group in _groups(components, word_gap * body_height, stack_gap * body_height):
         band = _band(group, body_height)
-        words.append(ScanWord(_drawing_order([Placed(component, classify(component, band)) for component in group]), band))
+        words.append(ScanWord(_drawing_order([Placed(component, _classify(component, band)) for component in group]), band))
     return _lines(words)
 
 

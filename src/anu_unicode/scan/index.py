@@ -1,7 +1,7 @@
 import html
 import shutil
 from collections.abc import Iterable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -29,17 +29,11 @@ class Occurrence:
     bbox: Box
 
 
-@dataclass(frozen=True)
-class Member:
-    mask: Bitmap
-    body_height: float
-
-
 @dataclass
 class ShapeIndex:
     catalog: ShapeCatalog
     occurrences: list[Occurrence] = field(default_factory=list)
-    members: dict[int, list[Member]] = field(default_factory=dict)
+    members: dict[int, list[Bitmap]] = field(default_factory=dict)
     pages: dict[int, set[int]] = field(default_factory=dict)
     new_per_page: dict[int, int] = field(default_factory=dict)
     random: np.random.Generator = field(default_factory=lambda: np.random.default_rng(SAMPLE_SEED))
@@ -53,24 +47,17 @@ class ShapeIndex:
                     self.occurrences.append(Occurrence(page.number, line_number, word_number, position, shape_id, placed.band,
                                                        placed.component.bbox))
                     self.pages.setdefault(shape_id, set()).add(page.number)
-                    self._sample(shape_id, Member(placed.component.mask, page.body_height))
+                    self._sample(shape_id, placed.component.mask)
         self.new_per_page[page.number] = len(self.catalog) - before
 
-    def _sample(self, shape_id: int, member: Member) -> None:
+    def _sample(self, shape_id: int, mask: Bitmap) -> None:
         crops = self.members.setdefault(shape_id, [])
         if len(crops) < MEMBER_CROPS:
-            crops.append(member)
+            crops.append(mask)
             return
         slot = int(self.random.integers(self.catalog.counts[shape_id]))
         if slot < MEMBER_CROPS:
-            crops[slot] = member
-
-    def merge(self, targets: dict[int, int]) -> None:
-        self.catalog.merge(targets)
-        self.occurrences = [replace(item, shape_id=targets.get(item.shape_id, item.shape_id)) for item in self.occurrences]
-        for source, target in targets.items():
-            self.pages[target] |= self.pages.pop(source)
-            self.members[target] = (self.members[target] + self.members.pop(source))[:MEMBER_CROPS]
+            crops[slot] = mask
 
     def by_frequency(self) -> list[int]:
         return sorted(range(len(self.catalog)), key=lambda shape_id: (-self.catalog.counts[shape_id], shape_id))
@@ -119,8 +106,7 @@ def write_index(out: Path, index: ShapeIndex) -> AlphabetStats:
         f"{shape_id}\t{int(catalog.counts[shape_id])}\t{tuple(Band)[catalog.bands[shape_id]]}\t{catalog.holes[shape_id]}\t"
         f"{catalog.heights[shape_id]:.2f}\t{catalog.aspects[shape_id]:.2f}\t{len(index.pages[shape_id])}" for shape_id in ranked))
     for shape_id in ranked:
-        masks = [member.mask for member in index.members[shape_id]]
-        member_strip(catalog.prototype(shape_id), masks).save(out / "shapes" / f"{shape_id}.png")
+        member_strip(catalog.prototype(shape_id), index.members[shape_id]).save(out / "shapes" / f"{shape_id}.png")
     rows = "".join(
         f"<tr><td>#{shape_id}</td><td>{int(catalog.counts[shape_id])}</td><td>{html.escape(str(tuple(Band)[catalog.bands[shape_id]]))}</td>"
         f"<td>{catalog.holes[shape_id]}</td><td><img src=\"shapes/{shape_id}.png\"></td></tr>" for shape_id in ranked)
