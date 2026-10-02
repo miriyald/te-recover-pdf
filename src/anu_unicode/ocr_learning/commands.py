@@ -67,7 +67,7 @@ def _learn(arguments: argparse.Namespace) -> None:
         logger.info("nothing to learn", extra={"start": arguments.start, "end": end})
         return
     start = numbers[0]
-    out = arguments.out / f"batch-{start}"
+    out = arguments.layout.intermediate("learn", f"batch-{start}")
     out.mkdir(parents=True, exist_ok=True)
 
     def checkpoint(result: PageResult) -> None:
@@ -101,7 +101,7 @@ def _learn(arguments: argparse.Namespace) -> None:
 
 def _rebuild_pages(arguments: argparse.Namespace, document: pymupdf.Document, state: LearningState,
                    confirmation_results: Iterable[ConfirmationResult]) -> list[PageResult]:
-    batch = arguments.out / f"batch-{arguments.batch}"
+    batch = arguments.layout.intermediate("learn", f"batch-{arguments.batch}")
     confirmed_text = {result.confirmation.correct for result in confirmation_results if result.status in ("added", "already correct")}
     results = []
     for number in batch_pages(batch):
@@ -114,7 +114,7 @@ def _rebuild_pages(arguments: argparse.Namespace, document: pymupdf.Document, st
 
 def _confirm(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
-    batch = arguments.out / f"batch-{arguments.batch}"
+    batch = arguments.layout.intermediate("learn", f"batch-{arguments.batch}")
     pages = batch_pages(batch)
     state = LearningState(load_entries(arguments.mapping), load_pending(arguments.pending), arguments.profile)
     reviewed_mapping = state.mapping
@@ -139,7 +139,7 @@ def _confirm(arguments: argparse.Namespace) -> None:
 
 
 def _approve(arguments: argparse.Namespace) -> None:
-    pages = approve_batch(arguments.out / f"batch-{arguments.batch}", arguments.verified, arguments.archive / "batches")
+    pages = approve_batch(arguments.layout.intermediate("learn", f"batch-{arguments.batch}"), arguments.verified, arguments.layout.batches)
     logger.info("batch approved", extra={"batch": arguments.batch, "pages": pages, "verified": str(arguments.verified)})
 
 
@@ -150,11 +150,10 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     learn.add_argument("--end", type=int, help="1-based last page; default last page of the PDF")
     learn.set_defaults(handler=_learn)
     confirm = commands.add_parser("confirm", help=f"{APPROACH} apply human-confirmed words to the mapping and rebuild the batch report")
-    confirm.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 1 for docs/temp/batch-1")
+    confirm.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 1 for output/intermediate/learn/batch-1")
     confirm.add_argument("--file", type=Path, help="confirmations (shown<TAB or =>correct); default <batch>/confirmations.tsv")
     confirm.set_defaults(handler=_confirm)
     approve = commands.add_parser("approve", help=f"{APPROACH} copy a reviewed batch's pages to verified/ and archive the batch")
-    approve.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 6 for docs/temp/batch-6")
-    approve.add_argument("--verified", type=Path, help="default books/<book>/verified")
-    approve.add_argument("--archive", type=Path, default=Path("archive"))
+    approve.add_argument("--batch", type=int, required=True, help="first page of the batch, e.g. 6 for output/intermediate/learn/batch-6")
+    approve.add_argument("--verified", type=Path, help="default files/<book>/state/verified")
     approve.set_defaults(handler=_approve)

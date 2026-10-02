@@ -19,15 +19,16 @@ SHEET_EXAMPLES = 5
 
 def _atlas(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
-    arguments.out.mkdir(parents=True, exist_ok=True)
+    out = arguments.layout.intermediate("atlas")
+    out.mkdir(parents=True, exist_ok=True)
     shapes = {shape.glyph: shape for shape in load_shapes(arguments.names)}
-    write_atlas(arguments.out / "atlas.html", collect_glyphs(document, arguments.profile), shapes, load_fonts(document, arguments.profile))
+    write_atlas(out / "atlas.html", collect_glyphs(document, arguments.profile), shapes, load_fonts(document, arguments.profile))
 
 
 def _sheets(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
     stats = collect_glyphs(document, arguments.profile, SHEET_EXAMPLES)
-    write_sheets(arguments.out / "shape-sheets", stats, load_fonts(document, arguments.profile), arguments.per_sheet)
+    write_sheets(arguments.layout.intermediate("sheets"), stats, load_fonts(document, arguments.profile), arguments.per_sheet)
 
 
 def _shapes(arguments: argparse.Namespace) -> None:
@@ -52,7 +53,7 @@ def _compare(arguments: argparse.Namespace) -> None:
         ocr = arguments.ocr(page) if arguments.ocr_missing or number in cached else None
         words.extend(page_words(page, arguments.profile, ocr, MATCH_OVERLAP))
     comparison = compare(words, load_mapping(arguments.candidate), load_mapping(arguments.mapping))
-    out = arguments.out / "shapes-validation"
+    out = arguments.layout.intermediate("compare")
     write_comparison(out, comparison, document, {shape.glyph: shape.name for shape in load_shapes(arguments.names)})
     verdicts = Counter(item.verdict for item in comparison.differences)
     logger.info("comparison written", extra={"words": comparison.words, "groups": len(comparison.differences), "verdicts": dict(verdicts),
