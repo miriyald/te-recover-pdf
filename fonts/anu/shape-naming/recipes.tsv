@@ -57,3 +57,8 @@ ee_hook e_hook	ే	a stray e hook after ee is a typing slip (వేెంకట 
 da_base stroke_mid tick_da stroke_low tick_da	థ	a stray low stroke typed over a finished tha (ప్రథమ)
 da_base stroke_low tick_da stroke_low	ధ	a stray low stroke typed over a finished dha (దుర్యోధనాది)
 e_hook_pre pa_base stroke_dot ai_tail sub_pa	ఫ్ఫై	the pha stroke also marks the subscript (ముఫ్ఫైమంది)
+ha_base tick_pa aa_long o_top	హొ	ho is the ha shape with the o top mark (హొయలు)
+e_hook_pre ee_hook_pre	◌ే	the ee sign drawn as two pre-base pieces (కే, వారే in Vol 14)
+ra_vattu anusvara da_base	ంద్ర	the vattu is typed before the anusvara that closes the previous letter (ఇంద్రులు, మహేంద్ర)
+ra_vattu anusvara dda_base	ండ్ర	the vattu is typed before the anusvara and the dda (తండ్రి)
+e_hook_pre e_hook_pre	◌ె	a doubled pre-base e is a typing slip (పెదవుల)

@@ -48,6 +48,22 @@ Per volume: font families and how each stores its codes; conversion with both go
   - gold 1 writes ే as ేె (Vols 2, 14, 15);
   - Vol 14 has ◌ె left over in gold 2, and an extra ె in gold 1, where the print reads కే / వారే.
 
+## Gold 2 follow-up for the nine volumes (decision: stay with gold 2, no `learn` for these volumes)
+- Names confirmed visually by the user:
+  - `∏` `o_top`, part of ొ (హొయలు); recipe `ha_base tick_pa aa_long o_top` → హొ;
+  - `”` `divide` ÷ (word separator);
+  - `&` `nya_base` ఞ;
+  - `˛` `times` ×.
+- Recipes for the six leftover `◌` placeholders, from glyph orders seen in the print:
+  - `e_hook_pre ee_hook_pre` → ◌ే (కే, వారే in Vol 14);
+  - `ra_vattu anusvara da_base` → ంద్ర (ఇంద్రులు, మహేంద్ర) and `… dda_base` → ండ్ర (తండ్రి);
+  - `e_hook_pre e_hook_pre` → ◌ె (a doubled pre-base e, పెదవుల).
+- Effect: 78 word changes in the first rerun, all intended, plus 3 pages in Vols 6–7 for the last two recipes. Mahabharatamu and Vol 3 are byte-identical to before.
+- Still open (about 12 places, listed in the output's `unmapped.tsv` and as `◌` in `book.txt`):
+  - stray strokes `è î ä ¶ ù` (a decision is pending: silent in general, or a narrow recipe per context);
+  - `ÔOO_»∞` in Vols 10 and 7 (`◌ెంండు`);
+  - a stray vattu in Vol 4 p191 (యాహుక◌్రప్రేషితుండయి) and a lone `„` in Vol 7 p107.
+
 ## Open questions
 - Whether to commit to the per-family decode table for the Type1 volumes, or to a content-stream-code decode (`fonts/anu/` would get an `encodings/` entry per scrambled family, chosen per book).
 - Which volume to take next. The ready group is the cheapest: add the families, run `convert`, and review the rare codes.
