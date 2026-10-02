@@ -50,5 +50,10 @@ di stroke_low	ధి	dhi is di with the inner stroke
 sub_ca sub_stroke	్ఛ	subscript cha is subscript ca with a stroke
 sub_ba sub_stroke	్భ	subscript bha is subscript ba with a stroke
 rii inner_dot	ఠీ	tthii is the rii glyph with a dot inside
-ra_base jha_tail	ఝ	jha drawn without the tick (Gowthami)
+ra_base jha_tail	్ఝ	the tickless jha is the r-jha conjunct; the ra before it is the base (Gowthami)
 va_base virama u_hook	మ్‌	m with a visible virama: the va body, the virama, then the closing hook
+pa_base stroke_dot ii_hook u_hook	ఘీ	ghii is the pha shape with ii, closed by a hook
+ee_hook e_hook	ే	a stray e hook after ee is a typing slip (వేెంకట is printed for వేంకట)
+da_base stroke_mid tick_da stroke_low tick_da	థ	a stray low stroke typed over a finished tha (ప్రథమ)
+da_base stroke_low tick_da stroke_low	ధ	a stray low stroke typed over a finished dha (దుర్యోధనాది)
+e_hook_pre pa_base stroke_dot ai_tail sub_pa	ఫ్ఫై	the pha stroke also marks the subscript (ముఫ్ఫైమంది)
