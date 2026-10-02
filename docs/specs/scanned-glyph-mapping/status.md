@@ -136,8 +136,16 @@ may share a name). Only ambiguity *between different letters* matters, and that 
 - Open: excluded ids drop out of the lists only; whether they also contribute nothing in conversion is decided at the convert step
   (`=` is the headword/meaning separator in this book)
 
+- Punctuation candidates (dots 3/879/424/1021/340/1809/745, commas 503/2296, wavy strokes 1463/328) taken back out of the exclusion
+  list for a later visit: 151 ids excluded
+- `conversion.py` + `scan-convert` (Phase 5): names + recipes compile through `compile_mapping`; per page the occurrences (minus excluded
+  ids) become `scan_words`, converted with `convert_anu`, lines in index order; gaps print as `⟦#id⟧`. Writes `page-N.unicode.txt`,
+  `book.txt`, `unmapped.tsv` (unnamed ids by count, the labelling queue) and, with `--quality`, the existing Tesseract quality report
+- Smoke test, pages 100–105, *provisional* names = the 542 Tesseract proposals with ≥ 4/5 votes (scratch file in `docs/temp`, not gold):
+  49.7 % glyph coverage, 12.2 % word agreement with Tesseract. Expected: the names are guesses. The pipeline runs end to end
+
 ## In progress
-- User labels the atlas
+- User labels the atlas (order suggestion: `scan-convert` `unmapped.tsv`, then frequency)
 
 ## Blocked / open issues
 - JIRA ID not given

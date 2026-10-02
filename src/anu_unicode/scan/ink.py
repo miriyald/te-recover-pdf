@@ -25,8 +25,12 @@ class Component:
         return self.bbox[3] - self.bbox[1]
 
 
+def pixels_per_point(page: pymupdf.Page) -> float:
+    return float(page.get_images(full=True)[0][2] / page.rect.width)
+
+
 def render_ink(page: pymupdf.Page) -> Bitmap:
-    scale = page.get_images(full=True)[0][2] / page.rect.width
+    scale = pixels_per_point(page)
     pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csGRAY)
     gray = np.frombuffer(pixmap.samples, np.uint8).reshape(pixmap.height, pixmap.width)
     return gray < INK_THRESHOLD
