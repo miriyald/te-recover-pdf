@@ -45,8 +45,27 @@ In progress: implementation is done and waiting for the reviewer's names and rec
   - Fused shapes occur only 1–4 times each, so word evidence cannot label them safely; their words keep Tesseract's reading.
   - Reverted to commit 49dfb3b.
 
+- Round 5: 157 decisions plus the recipe `ఎ e_top → ఏ`.
+- Conversion trust fixes (commit c26267b):
+  - agreement ignores ఁ and ఱ, and the periods Tesseract invents;
+  - a reviewed id overrides Tesseract only when its neighbours agree at 0.8 or more;
+  - a word Tesseract cannot read is written only from reviewed ids.
+- Whole-book evaluation against Tesseract (30,616 words):
+
+  | Change | Words |
+  |---|---|
+  | `=` written | 9,429 |
+  | ఁ restored | 1,044 |
+  | Invented periods left out | 357 |
+  | ఱ restored | 264 |
+  | Check against the page (పా/పొ 84, థ/ధ 11) | 95 |
+  | Mostly worse | about 311 (about 580 before the fixes) |
+
+  Page 51: 95/99. The evaluation page is `docs/temp/scan-v2/scan-evaluation.html`; it is not published because no claude.ai login was available.
+- Draft PRs: #1 (`scan-ocr-consensus` → `main`) and #2 (`scan-shape-names` → `scan-ocr-consensus`).
+
 ## In progress
-- Review round 5: tick `ఎ e_top → ఏ`, settle పా/పొ (the glyphs are identical and Tesseract guesses), and 3407 (probably `ౖ`).
+- None. Waiting for PR review.
 
 ## Blocked / open issues
 - Recipe proposals need symbolic names. None exist yet; the reviewer adds them, for example `ee_tail`.
