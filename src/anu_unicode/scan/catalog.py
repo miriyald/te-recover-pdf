@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -181,6 +182,12 @@ class ShapeCatalog:
         if shape_id is None:
             shape_id = self._add(shape)
         self._count(shape_id, shape)
+        return shape_id
+
+    def add_shapes(self, shapes: Sequence[Shape]) -> int:
+        shape_id = self._add(shapes[0])
+        for shape in shapes:
+            self._count(shape_id, shape)
         return shape_id
 
     def _add(self, shape: Shape) -> int:

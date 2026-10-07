@@ -111,3 +111,15 @@ def test_saved_catalog_keeps_ids_and_freezes_their_prototypes(tmp_path: Path) ->
     assert (again, new) == (ring_id, 1)
     assert loaded.frozen == 1
     assert np.array_equal(loaded.prototype(ring_id), catalog.prototype(ring_id))
+
+
+def test_shapes_split_off_an_id_become_a_new_id_after_the_frozen_ones(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(Thresholds(0.2, 0.2, 0.25))
+    catalog.assign(shape_of(_component(_bar()), Band.MAIN, 50.0))
+    catalog.save(tmp_path / "catalog.npz")
+    frozen = load_catalog(tmp_path / "catalog.npz")
+
+    new_id = frozen.add_shapes([shape_of(_component(_ring()), Band.MAIN, 50.0)] * 3)
+
+    assert new_id == 1
+    assert frozen.match(shape_of(_component(_ring()), Band.MAIN, 50.0)) == 1

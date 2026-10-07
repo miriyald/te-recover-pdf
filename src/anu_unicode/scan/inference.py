@@ -2,15 +2,15 @@ import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from enum import StrEnum
 from itertools import product
 from math import ceil
 from pathlib import Path
 
-from anu_unicode.convert import Coverage, convert_anu
 from anu_unicode.mapping import read_rows, write_rows
 from anu_unicode.scan.index import EQUALS, Occurrence
-from anu_unicode.scan.source import shape_char
+from anu_unicode.scan.names import Speller
 from anu_unicode.scan.word_ocr import WordKey
 from anu_unicode.scan.words import Band
 from anu_unicode.shape_naming.shapes import NOTHING
@@ -20,8 +20,11 @@ SEED_VOTES = 4
 ACCEPT_SHARE = 0.6
 RELABEL_VOTES = 2
 REFINE_SAMPLE = 40
+FORM_WORDS = 3
 MAX_UNKNOWN = 2
 MAX_ROUNDS = 30
+TESSERACT_BLIND = frozenset("ఁఱ")
+OCR_NOISE = frozenset(".,")
 QUOTES = "'\"‘’“”"
 
 
@@ -54,7 +57,7 @@ class WordEvidence:
 
 @dataclass(frozen=True)
 class Label:
-    unicode: str
+    name: str
     source: Source
     support: int
     agreement: float
@@ -75,13 +78,13 @@ def word_evidence(words: Mapping[WordKey, list[Occurrence]], texts: Mapping[Word
 
 def write_labels(path: Path, labels: Mapping[int, Label]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_rows(path, ("shape_id", "unicode", "source", "support", "agreement"),
-               ((shape_id, label.unicode, label.source, label.support, f"{label.agreement:.3f}")
+    write_rows(path, ("shape_id", "name", "source", "support", "agreement"),
+               ((shape_id, label.name, label.source, label.support, f"{label.agreement:.3f}")
                 for shape_id, label in sorted(labels.items())))
 
 
 def read_labels(path: Path) -> dict[int, Label]:
-    return {int(row["shape_id"]): Label(row["unicode"], Source(row["source"]), int(row["support"]), float(row["agreement"]))
+    return {int(row["shape_id"]): Label(row["name"], Source(row["source"]), int(row["support"]), float(row["agreement"]))
             for row in read_rows(path)}
 
 
@@ -93,28 +96,44 @@ def comparable_text(text: str) -> str:
     return comparable(unicodedata.normalize("NFC", clean_ocr(text))).strip(QUOTES).strip()
 
 
-def spell(shape_ids: Sequence[int], labels: Mapping[int, str]) -> str:
-    mapping = {shape_char(shape_id): "" if labels[shape_id] == NOTHING else labels[shape_id]
-               for shape_id in set(shape_ids) if shape_id in labels}
-    return convert_anu("".join(shape_char(shape_id) for shape_id in shape_ids), mapping, Coverage())
+def render(shape_ids: Sequence[int], names: Mapping[int, str], speller: Speller) -> str:
+    return comparable_text(speller.spell(shape_ids, names))
 
 
-def render(shape_ids: Sequence[int], labels: Mapping[int, str]) -> str:
-    return comparable_text(spell(shape_ids, labels))
+def differences(ocr: str, ours: str) -> list[tuple[str, str]]:
+    return [(ocr[first:last], ours[start:end])
+            for tag, first, last, start, end in SequenceMatcher(None, ocr, ours).get_opcodes() if tag != "equal"]
 
 
-def _pool(text: str) -> list[str]:
+def significant(changes: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    return [(ocr, ours) for ocr, ours in changes if not set(ours) & TESSERACT_BLIND and not (not ours and set(ocr) <= OCR_NOISE)]
+
+
+def consistent(ocr: str, ours: str) -> bool:
+    return not significant(differences(ocr, ours))
+
+
+def candidates_for(text: str) -> list[str]:
     allowed = set(text) | {PRE_BASE}
     return [candidate for candidate in CANDIDATES if candidate == NOTHING or set(candidate) <= allowed]
 
 
-def _solve(word: WordEvidence, labels: Mapping[int, str], unknown: Sequence[int], marks: frozenset[int]) -> tuple[str, ...] | None:
-    known = {shape_id: labels[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
-    fits = [option for option in product(_pool(word.text), repeat=len(unknown))
-            if render(word.shape_ids, {**known, **dict(zip(unknown, option))}) == word.text]
+def solve(word: WordEvidence, names: Mapping[int, str], unknown: Sequence[int], speller: Speller,
+          marks: frozenset[int]) -> tuple[str, ...] | None:
+    known = {shape_id: names[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
+    fits = [option for option in product(candidates_for(word.text), repeat=len(unknown))
+            if render(word.shape_ids, {**known, **dict(zip(unknown, option))}, speller) == word.text]
     if len(fits) > 1:
         fits = [option for option in fits if all(label != NOTHING or shape_id in marks for shape_id, label in zip(unknown, option))]
     return fits[0] if len(fits) == 1 else None
+
+
+def _other_form(name: str) -> str | None:
+    if name in SIGNS:
+        return PRE_BASE + name
+    if name.startswith(PRE_BASE) and name[1:] in SIGNS:
+        return name[1:]
+    return None
 
 
 def _winner(tally: Counter[str]) -> tuple[str, int] | None:
@@ -126,6 +145,7 @@ def _winner(tally: Counter[str]) -> tuple[str, int] | None:
 class _State:
     words: Sequence[WordEvidence]
     marks: frozenset[int]
+    speller: Speller
     labels: dict[int, str]
     sources: dict[int, Source]
     fixed: frozenset[int]
@@ -140,13 +160,15 @@ class _State:
     def unknown(self, word: WordEvidence) -> list[int]:
         return sorted({shape_id for shape_id in word.shape_ids if shape_id not in self.labels})
 
+    def _solve(self, word: WordEvidence, unknown: Sequence[int]) -> tuple[str, ...] | None:
+        return solve(word, self.labels, unknown, self.speller, self.marks)
+
     def learn(self) -> int:
         votes: dict[int, Counter[str]] = defaultdict(Counter)
         for word in self.words:
             unknown = self.unknown(word)
             if 1 <= len(unknown) <= MAX_UNKNOWN:
-                solution = _solve(word, self.labels, unknown, self.marks)
-                for shape_id, label in zip(unknown, solution or ()):
+                for shape_id, label in zip(unknown, self._solve(word, unknown) or ()):
                     votes[shape_id][label] += 1
         learned = 0
         for shape_id, tally in votes.items():
@@ -158,8 +180,8 @@ class _State:
 
     def _leave_one_out(self, shape_id: int, words: list[WordEvidence]) -> Iterator[str]:
         for word in words[::ceil(len(words) / REFINE_SAMPLE)] if words else ():
-            if not self.unknown(word) or self.unknown(word) == [shape_id]:
-                solution = _solve(word, self.labels, [shape_id], self.marks)
+            if self.unknown(word) in ([], [shape_id]):
+                solution = self._solve(word, [shape_id])
                 if solution:
                     yield solution[0]
 
@@ -173,22 +195,34 @@ class _State:
                 changed += 1
         return changed
 
-    def label(self, shape_id: int, words: list[WordEvidence]) -> Label:
+    def _agreeing(self, words: list[WordEvidence], labels: Mapping[int, str]) -> tuple[int, int]:
         complete = [word for word in words if not self.unknown(word)]
-        agreeing = sum(render(word.shape_ids, self.labels) == word.text for word in complete)
-        source = self.sources[shape_id]
-        if source is Source.REVIEW:
-            return Label(self.labels[shape_id], source, 0, 0.0)
-        return Label(self.labels[shape_id], source, agreeing, agreeing / len(complete) if complete else 0.0)
+        return sum(consistent(word.text, render(word.shape_ids, labels, self.speller)) for word in complete), len(complete)
+
+    def settle_forms(self, by_id: dict[int, list[WordEvidence]]) -> None:
+        for shape_id, name in list(self.labels.items()):
+            other = _other_form(name)
+            if other is None:
+                continue
+            current, complete = self._agreeing(by_id[shape_id], self.labels)
+            alternative, _ = self._agreeing(by_id[shape_id], {**self.labels, shape_id: other})
+            if complete >= FORM_WORDS and alternative > current:
+                self.labels[shape_id] = other
+
+    def label(self, shape_id: int, words: list[WordEvidence]) -> Label:
+        agreeing, complete = self._agreeing(words, self.labels)
+        return Label(self.labels[shape_id], self.sources[shape_id], agreeing, agreeing / complete if complete else 0.0)
 
 
-def infer(words: Sequence[WordEvidence], seeds: Mapping[int, str], decisions: Mapping[int, str], marks: frozenset[int]) -> dict[int, Label]:
+def infer(words: Sequence[WordEvidence], seeds: Mapping[int, str], decisions: Mapping[int, str], marks: frozenset[int],
+          speller: Speller) -> dict[int, Label]:
     evidence = [word for word in words if word.text]
-    state = _State(evidence, marks, {**seeds, **decisions},
+    state = _State(evidence, marks, speller, {**seeds, **decisions},
                    {**{shape_id: Source.SEED for shape_id in seeds}, **{shape_id: Source.REVIEW for shape_id in decisions}},
                    frozenset(decisions))
     by_id = state.containing()
     for _ in range(MAX_ROUNDS):
         if not state.learn() + state.refine(by_id):
             break
+    state.settle_forms(by_id)
     return {shape_id: state.label(shape_id, by_id[shape_id]) for shape_id in state.labels if shape_id in by_id or shape_id in decisions}
