@@ -3,7 +3,9 @@ import logging
 import shutil
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from functools import cache
+from itertools import groupby
 from pathlib import Path
 
 import pymupdf
@@ -12,18 +14,19 @@ from anu_unicode.command_support import page_range, requested_pages
 from anu_unicode.convert import UNMAPPED_OPEN
 from anu_unicode.mapping import write_rows
 from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
-from anu_unicode.scan.catalog import ShapeCatalog, Thresholds, load_catalog
+from anu_unicode.scan.catalog import Shape, ShapeCatalog, Thresholds, load_catalog, shape_of
 from anu_unicode.scan.checks import check_decisions, write_rechecks
 from anu_unicode.scan.conversion import Choice, convert_scan_page
-from anu_unicode.scan.glyph_ocr import GlyphOcr, propose, tesseract_glyph
+from anu_unicode.scan.glyph_ocr import GlyphOcr, largest_component, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
-from anu_unicode.scan.ink import Bitmap, render_ink
+from anu_unicode.scan.ink import Bitmap, Component, find_components, median_height, render_ink
 from anu_unicode.scan.names import Speller, is_symbolic, validate_recipes
-from anu_unicode.scan.page import ScanPage, scan_page
+from anu_unicode.scan.page import MIN_AREA, ScanPage, scan_page
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
+from anu_unicode.scan.split import Division, divide, find_mixed, readings
 from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, words_of
 from anu_unicode.shape_naming.shapes import load_recipes
 
@@ -147,6 +150,51 @@ def _scan_review(arguments: argparse.Namespace) -> None:
                                                     "save_exports_as": [str(arguments.decisions), str(arguments.scan_recipes)]})
 
 
+def _member_shapes(arguments: argparse.Namespace, items: list[Occurrence]) -> dict[Occurrence, Shape]:
+    document = pymupdf.open(arguments.pdf)
+    shapes: dict[Occurrence, Shape] = {}
+    for page, on_page in groupby(sorted(items, key=lambda item: item.page), key=lambda item: item.page):
+        ink = render_ink(document[page - 1])
+        body_height = median_height(find_components(ink, MIN_AREA))
+        for item in on_page:
+            shapes[item] = shape_of(Component(item.bbox, largest_component(ink, item.bbox)), item.band, body_height)
+    return shapes
+
+
+def _apply_splits(arguments: argparse.Namespace, divisions: list[Division], shapes: dict[Occurrence, Shape]) -> dict[int, int]:
+    catalog = load_catalog(arguments.catalog)
+    new_ids = {division.mixed.shape_id: catalog.add_shapes([shapes[item] for item in division.move]) for division in divisions}
+    moved = {(item.page, item.bbox): new_ids[division.mixed.shape_id] for division in divisions for item in division.move}
+    assigned = arguments.layout.state / ASSIGNMENTS
+    write_occurrences(assigned, [replace(item, shape_id=moved.get((item.page, item.bbox), item.shape_id))
+                                 for item in read_occurrences(assigned)])
+    catalog.save(arguments.catalog)
+    return new_ids
+
+
+def _scan_split(arguments: argparse.Namespace) -> None:
+    occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
+    words = words_of(occurrences)
+    decisions, labels = read_decisions(arguments.decisions), read_labels(arguments.layout.state / LABELS)
+    by_id = readings(words, _texts(arguments, words, _renderer(arguments)), labels, _speller(arguments, decisions), marks_of(occurrences))
+    mixed = find_mixed(by_id, labels)
+    wanted = {candidate.shape_id for candidate in mixed}
+    shapes = _member_shapes(arguments, [item for item in occurrences if item.shape_id in wanted])
+    outcomes = [(candidate, divide(candidate, {item: shape.canvas for item, shape in shapes.items() if item.shape_id == candidate.shape_id},
+                                   by_id[candidate.shape_id])) for candidate in mixed]
+    divisions = [division for _, division in outcomes if division]
+    new_ids = _apply_splits(arguments, divisions, shapes) if arguments.apply else {}
+    out = arguments.layout.intermediate("scan-split")
+    out.mkdir(parents=True, exist_ok=True)
+    write_rows(out / "splits.tsv", ("shape_id", "keep", "other", "kept_words", "other_words", "outcome", "moved", "new_id"),
+               ((candidate.shape_id, candidate.keep, candidate.other, candidate.kept, candidate.other_count,
+                 "split" if division else "same_look", len(division.move) if division else 0, new_ids.get(candidate.shape_id, ""))
+                for candidate, division in outcomes))
+    logger.info("mixed shape ids checked", extra={"mixed": len(mixed), "split": len(divisions), "same_look": len(mixed) - len(divisions),
+                                                  "moved": sum(len(division.move) for division in divisions), "applied": arguments.apply,
+                                                  "report": str(out / "splits.tsv")})
+
+
 def _scan_convert(arguments: argparse.Namespace) -> None:
     occurrences = _occurrences(arguments, arguments.pages)
     words = words_of(occurrences)
@@ -205,3 +253,8 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     _pages_option(convert, "every indexed page")
     _decisions_option(convert)
     convert.set_defaults(handler=_scan_convert)
+    split = commands.add_parser("scan-split", help=f"{SCAN} find shape ids that hold two shapes and split them (report unless --apply)")
+    _decisions_option(split)
+    split.add_argument("--catalog", type=Path, help="default files/<book>/state/scan-catalog.npz")
+    split.add_argument("--apply", action="store_true", help="add the new ids to the catalog and move their occurrences; re-run scan-index")
+    split.set_defaults(handler=_scan_split)

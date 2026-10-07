@@ -15,7 +15,13 @@ Implement `design.md` on a new branch, `scan-shape-names`, cut from `scan-ocr-co
 9. [ ] Commands: `scan-label` writes the labels, proposals and checks; `scan-review` and `scan-convert` use the speller. Add `--recipes` (default `fonts/<font>/scan/recipes.tsv`) and bump the version to 0.14.0.
 10. [ ] `lint.cmd` and `pytest` pass, then `/code-review`.
 11. [ ] Run on the whole book with the cached OCR. Inspect the 12 dot cases.
-12. [ ] Gate: report the before/after table. You review the sheet with names and recipes.
+12. [x] Gate: round 4 decisions (147). Proposal `ఎ e_top → ఏ` (72 words, 100%). Disagreements down to 1,012.
+13. [ ] Split mixed ids (design §7, TDD):
+    1. a public `solve` in inference;
+    2. `scan/split.py`, which finds mixed ids and divides them by template;
+    3. a public `ShapeCatalog.add_shapes`;
+    4. the `scan-split` command: report by default, change the catalog only with `--apply`.
+14. [ ] Run `scan-split` on the book and report: mixed ids, same-look ids, occurrences moved. Apply after approval, then `scan-index`, `scan-label` and a sheet.
 
 ## Risks & mitigations
 - **A symbolic name with no recipe silently loses ink.** It renders as a gap, so the word falls back to OCR and shows up as a recipe proposal.

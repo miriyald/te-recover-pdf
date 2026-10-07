@@ -102,6 +102,16 @@ def candidates_for(text: str) -> list[str]:
     return [candidate for candidate in CANDIDATES if candidate == NOTHING or set(candidate) <= allowed]
 
 
+def solve(word: WordEvidence, names: Mapping[int, str], unknown: Sequence[int], speller: Speller,
+          marks: frozenset[int]) -> tuple[str, ...] | None:
+    known = {shape_id: names[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
+    fits = [option for option in product(candidates_for(word.text), repeat=len(unknown))
+            if render(word.shape_ids, {**known, **dict(zip(unknown, option))}, speller) == word.text]
+    if len(fits) > 1:
+        fits = [option for option in fits if all(label != NOTHING or shape_id in marks for shape_id, label in zip(unknown, option))]
+    return fits[0] if len(fits) == 1 else None
+
+
 def _other_form(name: str) -> str | None:
     if name in SIGNS:
         return PRE_BASE + name
@@ -135,13 +145,7 @@ class _State:
         return sorted({shape_id for shape_id in word.shape_ids if shape_id not in self.labels})
 
     def _solve(self, word: WordEvidence, unknown: Sequence[int]) -> tuple[str, ...] | None:
-        known = {shape_id: self.labels[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
-        fits = [option for option in product(candidates_for(word.text), repeat=len(unknown))
-                if render(word.shape_ids, {**known, **dict(zip(unknown, option))}, self.speller) == word.text]
-        if len(fits) > 1:
-            fits = [option for option in fits
-                    if all(label != NOTHING or shape_id in self.marks for shape_id, label in zip(unknown, option))]
-        return fits[0] if len(fits) == 1 else None
+        return solve(word, self.labels, unknown, self.speller, self.marks)
 
     def learn(self) -> int:
         votes: dict[int, Counter[str]] = defaultdict(Counter)

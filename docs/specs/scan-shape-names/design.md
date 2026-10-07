@@ -84,7 +84,37 @@ Changes on the sheet:
 - Each row shows up to 3 sample words rendered with the current name, next to Tesseract's reading.
 - The export downloads `decisions.tsv` (`shape_id`, `name`) and `recipes.tsv` (the earlier recipes plus the confirmed ones).
 
-### 7. Word-final dots
+### 7. Splitting mixed ids (`scan/split.py`, `scan-split`)
+Round 4 found ids that hold two shapes (1741: డ్డ and ద్ద). No label can be right for both, so the reviewer can only leave them empty. The approach:
+
+```mermaid
+flowchart LR
+  L[labels + word OCR] --> R[reading per occurrence<br/>leave-one-out solve]
+  R --> M{two stable readings?<br/>both ≥ 5 words, minority ≥ 25%}
+  M -- no --> X[keep]
+  M -- yes --> P[template image per reading<br/>majority of canvases]
+  P --> D{templates differ?<br/>thick difference}
+  D -- no --> S[same look: report as a<br/>label problem, not a mix]
+  D -- yes --> A[each occurrence goes to the nearer template]
+  A --> N[minority side becomes a new id<br/>catalog + assignments]
+```
+
+1. **Candidates.** Only ids whose agreement is below 0.8 are considered, because a mixed id can only agree with one side.
+2. **Readings.** For each occurrence of a candidate, solve its label from its own word while every other id stays fixed. This uses the same solver as inference.
+3. **Mixed.** An id is mixed when its two most common readings each come from at least 5 words and the smaller one has at least 25% of the solved readings.
+4. **Confirmed by the image.**
+   - Build a template image (canvas) for each reading from that side's members.
+   - If the two templates do *not* differ by the thick-difference test, the shapes look the same, and the split is rejected. That disagreement is Tesseract noise or a wrong label. One example is 1376 `పొ`, whose members all look like పా. Such ids are reported as `same_look`.
+5. **Divide.**
+   - Every occurrence, including those with no OCR evidence, goes to the nearer template by thick-blob distance.
+   - The id keeps the side whose reading matches its decided label. If the id has no decision, it keeps the larger side.
+   - The other side becomes a new id, appended to the catalog. Existing ids never change.
+6. **Apply.**
+   - `scan-split` writes `splits.tsv` and changes nothing.
+   - `scan-split --apply` adds the new ids to the catalog and rewrites `state/scan-occurrences.tsv`.
+   - The next `scan-index` keeps those assignments, because they are keyed by page, box and ink. `scan-label` then labels the new ids.
+
+### 8. Word-final dots
 No code change. Inspect the 12 cases that have ink right after the word. Revisit only if they are real periods.
 
 ## Alternatives considered
