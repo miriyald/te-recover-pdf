@@ -1,7 +1,7 @@
 import numpy as np
 
 from anu_unicode.scan.ink import Component, find_components
-from anu_unicode.scan.words import Band, page_words
+from anu_unicode.scan.words import Band, Placed, ScanWord, is_equals, page_words
 
 BODY = 50.0
 
@@ -68,3 +68,25 @@ def test_words_on_separate_rows_are_separate_lines_in_reading_order() -> None:
     lines = page_words([second_line, first_line], BODY, word_gap=0.45, stack_gap=0.3)
 
     assert [line[0].glyphs[0].component for line in lines] == [first_line, second_line]
+
+
+def test_a_thin_word_lower_on_a_skewed_line_still_joins_that_line() -> None:
+    letters = [_block(0, 0, 40, 50), _block(100, 20, 60, 6), _block(100, 32, 60, 6), _block(400, 6, 40, 50),
+               _block(500, 26, 60, 6), _block(500, 38, 60, 6)]
+
+    lines = page_words(letters, BODY, word_gap=0.45, stack_gap=0.3)
+
+    assert [len(line) for line in lines] == [4]
+
+
+def _placed(*components: Component) -> ScanWord:
+    return ScanWord(tuple(Placed(component, Band.MAIN) for component in components), (0, 50))
+
+
+def test_two_stacked_bars_are_an_equals_sign() -> None:
+    assert is_equals(_placed(_block(0, 10, 60, 10), _block(0, 30, 60, 10)), BODY)
+
+
+def test_a_single_bar_or_a_letter_beside_a_bar_is_not_an_equals_sign() -> None:
+    assert not is_equals(_placed(_block(0, 10, 60, 10)), BODY)
+    assert not is_equals(_placed(_block(0, 10, 60, 10), _block(70, 0, 40, 50)), BODY)

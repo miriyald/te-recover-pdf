@@ -7,8 +7,11 @@ MATCH_OVERLAP = 0.3
 
 
 def page_range(text: str) -> list[int]:
-    first, _, last = text.partition("-")
-    return list(range(int(first), int(last or first) + 1))
+    pages: set[int] = set()
+    for part in text.split(","):
+        first, _, last = part.partition("-")
+        pages.update(range(int(first), int(last or first) + 1))
+    return sorted(pages)
 
 
 def requested_pages(arguments: argparse.Namespace, document: pymupdf.Document) -> list[int]:

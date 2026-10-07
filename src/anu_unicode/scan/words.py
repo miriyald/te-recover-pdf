@@ -10,6 +10,8 @@ MAIN_OVERLAP = 0.5
 BODY_HEIGHT_RANGE = (0.7, 1.3)
 RESTING_OVERLAP = 0.5
 RESTING_DEPTH = 0.25
+BAR_HEIGHT = 0.35
+BAR_ASPECT = 2.5
 
 
 class Band(StrEnum):
@@ -33,6 +35,14 @@ class ScanWord:
     def bbox(self) -> Box:
         boxes = [placed.component.bbox for placed in self.glyphs]
         return min(box[0] for box in boxes), min(box[1] for box in boxes), max(box[2] for box in boxes), max(box[3] for box in boxes)
+
+
+def _is_bar(component: Component, body_height: float) -> bool:
+    return component.height < BAR_HEIGHT * body_height and component.width > BAR_ASPECT * component.height
+
+
+def is_equals(word: ScanWord, body_height: float) -> bool:
+    return len(word.glyphs) >= 2 and all(_is_bar(placed.component, body_height) for placed in word.glyphs)
 
 
 def _overlap(first: tuple[int, int], second: tuple[int, int]) -> int:
@@ -120,11 +130,15 @@ def page_words(components: list[Component], body_height: float, word_gap: float,
     return _lines(words)
 
 
+def _line_band(line: list[ScanWord]) -> tuple[int, int]:
+    return min(word.band[0] for word in line), max(word.band[1] for word in line)
+
+
 def _lines(words: list[ScanWord]) -> list[list[ScanWord]]:
     lines: list[list[ScanWord]] = []
     for word in sorted(words, key=lambda item: item.band[0]):
         height = word.band[1] - word.band[0]
-        line = next((line for line in lines if _overlap(line[-1].band, word.band) >= MAIN_OVERLAP * height), None)
+        line = next((line for line in lines if _overlap(_line_band(line), word.band) >= MAIN_OVERLAP * height), None)
         if line is None:
             lines.append([word])
         else:

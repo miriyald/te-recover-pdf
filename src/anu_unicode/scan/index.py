@@ -10,12 +10,13 @@ from PIL import Image
 from anu_unicode.scan.catalog import GRID, ShapeCatalog, shape_of
 from anu_unicode.scan.ink import Bitmap, Box
 from anu_unicode.scan.page import ScanPage
-from anu_unicode.scan.words import Band, Placed
+from anu_unicode.scan.words import Band, Placed, is_equals
 
 MEMBER_CROPS = 16
 SAMPLE_SEED = 0
 STRIP_HEIGHT = 64
 COVERAGE = 0.99
+EQUALS = -1
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class ShapeIndex:
     def _shape_id(self, page: ScanPage, placed: Placed) -> int:
         shape = shape_of(placed.component, placed.band, page.body_height)
         earlier = self.previous.get((page.number, placed.component.bbox))
-        if earlier is not None and earlier[1] == int(placed.component.mask.sum()) and earlier[0] < len(self.catalog):
+        if earlier is not None and earlier[1] == int(placed.component.mask.sum()) and 0 <= earlier[0] < len(self.catalog):
             self.kept += 1
             return self.catalog.keep(earlier[0], shape)
         return self.catalog.assign(shape)
@@ -60,12 +61,14 @@ class ShapeIndex:
         before = len(self.catalog)
         for line_number, line in enumerate(page.lines, start=1):
             for word_number, word in enumerate(line, start=1):
+                equals = is_equals(word, page.body_height)
                 for position, placed in enumerate(word.glyphs, start=1):
-                    shape_id = self._shape_id(page, placed)
+                    shape_id = EQUALS if equals else self._shape_id(page, placed)
                     self.occurrences.append(Occurrence(page.number, line_number, word_number, position, shape_id, placed.band,
                                                        placed.component.bbox, int(placed.component.mask.sum())))
-                    self.pages.setdefault(shape_id, set()).add(page.number)
-                    self._sample(shape_id, placed.component.mask)
+                    if not equals:
+                        self.pages.setdefault(shape_id, set()).add(page.number)
+                        self._sample(shape_id, placed.component.mask)
         self.new_per_page[page.number] = len(self.catalog) - before
 
     def _sample(self, shape_id: int, mask: Bitmap) -> None:
@@ -118,25 +121,24 @@ def write_occurrences(path: Path, occurrences: Iterable[Occurrence]) -> None:
         + f"\t{item.ink}" for item in occurrences))
 
 
-def write_index(out: Path, index: ShapeIndex, excluded: frozenset[int] = frozenset()) -> AlphabetStats:
+def write_index(out: Path, index: ShapeIndex) -> AlphabetStats:
     shutil.rmtree(out, ignore_errors=True)
     (out / "shapes").mkdir(parents=True)
     catalog = index.catalog
     write_occurrences(out / "occurrences.tsv", index.occurrences)
     live = [shape_id for shape_id in index.by_frequency() if catalog.counts[shape_id]]
-    ranked = [shape_id for shape_id in live if shape_id not in excluded]
     write_tsv(out / "shapes.tsv", "shape_id\tcount\tband\tholes\theight\taspect\tpages", (
         f"{shape_id}\t{int(catalog.counts[shape_id])}\t{tuple(Band)[catalog.bands[shape_id]]}\t{catalog.holes[shape_id]}\t"
-        f"{catalog.heights[shape_id]:.2f}\t{catalog.aspects[shape_id]:.2f}\t{len(index.pages[shape_id])}" for shape_id in ranked))
+        f"{catalog.heights[shape_id]:.2f}\t{catalog.aspects[shape_id]:.2f}\t{len(index.pages[shape_id])}" for shape_id in live))
     for shape_id in live:
         member_strip(catalog.prototype(shape_id), index.members[shape_id]).save(out / "shapes" / f"{shape_id}.png")
     rows = "".join(
         f"<tr><td>#{shape_id}</td><td>{int(catalog.counts[shape_id])}</td><td>{html.escape(str(tuple(Band)[catalog.bands[shape_id]]))}</td>"
-        f"<td>{catalog.holes[shape_id]}</td><td><img src=\"shapes/{shape_id}.png\"></td></tr>" for shape_id in ranked)
+        f"<td>{catalog.holes[shape_id]}</td><td><img src=\"shapes/{shape_id}.png\"></td></tr>" for shape_id in live)
     (out / "shapes.html").write_text(
         "<!doctype html><meta charset=\"utf-8\"><title>Scan shapes</title><style>body{font:14px sans-serif}td{padding:2px 8px;"
         "border-bottom:1px solid #ddd}img{height:40px}</style><table><tr><th>id</th><th>count</th><th>band</th><th>holes</th>"
         f"<th>prototype · members</th></tr>{rows}</table>\n", encoding="utf-8", newline="\n")
-    stats = alphabet_stats(catalog.counts[shape_id] for shape_id in ranked)
+    stats = alphabet_stats(catalog.counts[shape_id] for shape_id in live)
     write_tsv(out / "growth.tsv", "page\tnew_shapes", (f"{page}\t{count}" for page, count in index.new_per_page.items()))
     return stats
