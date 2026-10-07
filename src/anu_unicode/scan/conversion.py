@@ -12,6 +12,7 @@ from anu_unicode.scan.names import Speller
 from anu_unicode.scan.source import SHAPE_BASE, SHAPE_LIMIT, shape_id_of
 from anu_unicode.scan.word_ocr import WordKey
 
+STRONG_AGREEMENT = 0.8
 SHAPE_CHAR = re.compile(f"[{chr(SHAPE_BASE)}-{chr(SHAPE_LIMIT)}]")
 
 
@@ -21,6 +22,7 @@ class Choice(StrEnum):
     EQUALS = "equals"
     WORD_OCR = "word_ocr"
     GAP = "gap"
+    UNREAD = "unread"
 
 
 @dataclass
@@ -53,16 +55,24 @@ def _word(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, pag
     if complete and comparable_text(ours) == comparable_text(ocr):
         page.choices[Choice.AGREED] += 1
         return ours
-    if complete and any(labels[shape_id].source is Source.REVIEW for shape_id in shape_ids):
+    reviewed = [labels[shape_id].source is Source.REVIEW for shape_id in shape_ids] if complete else []
+    if reviewed and (all(reviewed) or (any(reviewed) and ocr and _strong_neighbours(shape_ids, labels))):
         page.choices[Choice.REVIEWED] += 1
         return ours
-    if complete:
+    if complete and ocr:
         page.disagreements.append((key, ours, ocr))
     if ocr:
         page.choices[Choice.WORD_OCR] += 1
         return ocr
+    if complete:
+        page.choices[Choice.UNREAD] += 1
+        return ""
     page.choices[Choice.GAP] += 1
     return readable(ours)
+
+
+def _strong_neighbours(shape_ids: list[int], labels: Mapping[int, Label]) -> bool:
+    return all(labels[shape_id].source is Source.REVIEW or labels[shape_id].agreement >= STRONG_AGREEMENT for shape_id in shape_ids)
 
 
 def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping[int, Label], texts: Mapping[WordKey, str],
@@ -70,5 +80,5 @@ def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping
     reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller)
     page = ScanText()
     for _, line in groupby(sorted(words), key=lambda key: key[:2]):
-        page.lines.append(" ".join(_word(key, words[key], reading, texts.get(key, ""), page) for key in line))
+        page.lines.append(" ".join(text for text in (_word(key, words[key], reading, texts.get(key, ""), page) for key in line) if text))
     return page

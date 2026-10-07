@@ -71,6 +71,14 @@ def test_a_human_decision_is_never_overruled() -> None:
     assert labels[1] == Label("గ", Source.REVIEW, support=0, agreement=0.0)
 
 
+def test_agreement_ignores_what_tesseract_cannot_read_or_invents() -> None:
+    words = [WordEvidence((1, 2), "తోక"), WordEvidence((1, 3), "తోట."), WordEvidence((1, 3), "తోజ")]
+
+    labels = infer(words, seeds={1: "తో", 3: "ట"}, decisions={2: "ఁక"}, marks=frozenset(), speller=SPELLER)
+
+    assert labels[1].agreement == 2 / 3
+
+
 def test_a_named_piece_and_its_recipe_let_the_host_be_solved() -> None:
     words = [WordEvidence((1, 2), "గో"), WordEvidence((1, 2), "గో")]
     speller = Speller([Recipe(("గ", "o_tick"), "గో")])

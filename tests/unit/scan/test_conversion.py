@@ -35,6 +35,25 @@ def test_a_word_with_a_reviewed_id_keeps_our_reading_over_word_ocr() -> None:
     assert page.choices == {Choice.REVIEWED: 1}
 
 
+def test_a_reviewed_id_does_not_override_ocr_when_a_neighbour_is_weak() -> None:
+    labels = {1: Label("క", Source.WORDS, 2, 0.5), 3: Label("ము", Source.REVIEW, 0, 0.0)}
+
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 3)]), labels, {(4, 1, 1): "కమ"}, SPELLER)
+
+    assert page.lines == ["కమ"]
+    assert page.disagreements == [((4, 1, 1), "కము", "కమ")]
+
+
+def test_a_word_tesseract_cannot_read_is_written_only_from_reviewed_ids() -> None:
+    words = words_of([_at(1, 1, 1, 1), _at(1, 2, 1, 3), _at(1, 3, 1, 2)])
+    labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}
+
+    page = convert_scan_page(words, labels, {(4, 1, 3): "ా"}, SPELLER)
+
+    assert page.lines == ["ము ా"]
+    assert page.choices == {Choice.UNREAD: 1, Choice.REVIEWED: 1, Choice.AGREED: 1}
+
+
 def test_a_reviewed_name_no_recipe_covers_falls_back_to_word_ocr() -> None:
     labels = {**LABELS, 4: Label("o_tick", Source.REVIEW, 0, 0.0)}
 

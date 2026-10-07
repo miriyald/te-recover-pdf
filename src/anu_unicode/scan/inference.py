@@ -2,6 +2,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from enum import StrEnum
 from itertools import product
 from math import ceil
@@ -22,6 +23,8 @@ REFINE_SAMPLE = 40
 FORM_WORDS = 3
 MAX_UNKNOWN = 2
 MAX_ROUNDS = 30
+TESSERACT_BLIND = frozenset("ఁఱ")
+OCR_NOISE = frozenset(".,")
 QUOTES = "'\"‘’“”"
 
 
@@ -95,6 +98,19 @@ def comparable_text(text: str) -> str:
 
 def render(shape_ids: Sequence[int], names: Mapping[int, str], speller: Speller) -> str:
     return comparable_text(speller.spell(shape_ids, names))
+
+
+def differences(ocr: str, ours: str) -> list[tuple[str, str]]:
+    return [(ocr[first:last], ours[start:end])
+            for tag, first, last, start, end in SequenceMatcher(None, ocr, ours).get_opcodes() if tag != "equal"]
+
+
+def significant(changes: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    return [(ocr, ours) for ocr, ours in changes if not set(ours) & TESSERACT_BLIND and not (not ours and set(ocr) <= OCR_NOISE)]
+
+
+def consistent(ocr: str, ours: str) -> bool:
+    return not significant(differences(ocr, ours))
 
 
 def candidates_for(text: str) -> list[str]:
@@ -181,7 +197,7 @@ class _State:
 
     def _agreeing(self, words: list[WordEvidence], labels: Mapping[int, str]) -> tuple[int, int]:
         complete = [word for word in words if not self.unknown(word)]
-        return sum(render(word.shape_ids, labels, self.speller) == word.text for word in complete), len(complete)
+        return sum(consistent(word.text, render(word.shape_ids, labels, self.speller)) for word in complete), len(complete)
 
     def settle_forms(self, by_id: dict[int, list[WordEvidence]]) -> None:
         for shape_id, name in list(self.labels.items()):
