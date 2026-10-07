@@ -1,40 +1,43 @@
-from anu_unicode.convert import Coverage
-from anu_unicode.scan.conversion import convert_scan_page, readable, unmapped_ids
-from anu_unicode.scan.index import Occurrence
+from anu_unicode.scan.conversion import Choice, convert_scan_page, readable
+from anu_unicode.scan.index import EQUALS, Occurrence
+from anu_unicode.scan.inference import Label, Source
 from anu_unicode.scan.source import shape_char
+from anu_unicode.scan.word_ocr import words_of
 from anu_unicode.scan.words import Band
 
-MAPPING = {shape_char(1): "క", shape_char(2): "ా", shape_char(3): "ము"}
+LABELS = {1: Label("క", Source.WORDS, 9, 1.0), 2: Label("ా", Source.WORDS, 9, 1.0), 3: Label("ము", Source.WORDS, 9, 1.0)}
 
 
 def _at(line: int, word: int, position: int, shape_id: int) -> Occurrence:
     return Occurrence(4, line, word, position, shape_id, Band.MAIN, (position * 50, line * 100, position * 50 + 40, line * 100 + 50))
 
 
-def test_lines_and_words_convert_in_order() -> None:
-    occurrences = [_at(2, 1, 1, 3), _at(1, 2, 1, 3), _at(1, 1, 2, 2), _at(1, 1, 1, 1)]
+def test_each_word_takes_ours_when_it_agrees_equals_bars_become_equals_and_the_rest_take_word_ocr() -> None:
+    occurrences = [_at(1, 1, 1, 1), _at(1, 1, 2, 2), _at(1, 2, 1, EQUALS), _at(1, 2, 2, EQUALS), _at(1, 3, 1, 3),
+                   _at(2, 1, 1, 3), _at(2, 1, 2, 77)]
+    texts = {(4, 1, 1): "కా", (4, 1, 3): "మ", (4, 2, 1): "'ముల"}
 
-    page = convert_scan_page(occurrences, frozenset(), MAPPING, 1.0, Coverage())
+    page = convert_scan_page(words_of(occurrences), LABELS, texts)
 
-    assert page.lines == ["కా ము", "ము"]
-    assert [text for _, text in page.words] == ["కా", "ము", "ము"]
-
-
-def test_excluded_ids_contribute_nothing() -> None:
-    occurrences = [_at(1, 1, 1, 1), _at(1, 1, 2, 9), _at(1, 1, 3, 2)]
-
-    page = convert_scan_page(occurrences, frozenset({9}), MAPPING, 1.0, Coverage())
-
-    assert page.lines == ["కా"]
+    assert page.lines == ["కా = మ", "ముల"]
+    assert page.choices == {Choice.AGREED: 1, Choice.EQUALS: 1, Choice.WORD_OCR: 2}
+    assert page.disagreements == [((4, 1, 3), "ము", "మ")]
 
 
-def test_unnamed_ids_show_as_numbered_gaps_and_are_counted() -> None:
-    coverage = Coverage()
+def test_a_word_with_a_reviewed_id_keeps_our_reading_over_word_ocr() -> None:
+    labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page([_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 2, 1, 77)], frozenset(), MAPPING, 1.0, coverage)
+    page = convert_scan_page(words_of([_at(1, 1, 1, 3)]), labels, {(4, 1, 1): "మ"})
 
-    assert page.lines == ["క⟦#77⟧ ⟦#77⟧"]
-    assert unmapped_ids(coverage) == {77: 2}
+    assert page.lines == ["ము"]
+    assert page.choices == {Choice.REVIEWED: 1}
+
+
+def test_a_word_with_no_ocr_and_an_unlabelled_id_shows_the_numbered_gap() -> None:
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 77)]), LABELS, {})
+
+    assert page.lines == ["క⟦#77⟧"]
+    assert page.choices == {Choice.GAP: 1}
 
 
 def test_readable_replaces_only_shape_characters() -> None:

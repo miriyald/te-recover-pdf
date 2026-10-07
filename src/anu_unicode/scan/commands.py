@@ -1,30 +1,33 @@
 import argparse
 import logging
 import shutil
-from collections import defaultdict
+from collections import Counter
+from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 
 import pymupdf
 
-from anu_unicode.command_support import MATCH_OVERLAP, page_range, requested_pages
-from anu_unicode.convert import Coverage
+from anu_unicode.command_support import page_range, requested_pages
 from anu_unicode.mapping import write_rows
-from anu_unicode.quality import compare_words, page_quality
-from anu_unicode.quality_report import QualityReport, write_quality_report
 from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
-from anu_unicode.scan.atlas import AtlasInput, Ocr, build_rows, tesseract_reading, write_scan_atlas
 from anu_unicode.scan.catalog import ShapeCatalog, Thresholds, load_catalog
-from anu_unicode.scan.conversion import convert_scan_page, unmapped_ids
+from anu_unicode.scan.conversion import Choice, convert_scan_page
+from anu_unicode.scan.glyph_ocr import GlyphOcr, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
-from anu_unicode.scan.ink import pixels_per_point
+from anu_unicode.scan.inference import infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
+from anu_unicode.scan.ink import Bitmap, render_ink
 from anu_unicode.scan.page import ScanPage, scan_page
-from anu_unicode.scan.pages import rank_pages
-from anu_unicode.scan.source import read_excluded, read_occurrences
-from anu_unicode.shape_naming.shapes import compile_mapping, load_recipes, load_shapes
+from anu_unicode.scan.review import ReviewInput, read_decisions, review_rows, write_review
+from anu_unicode.scan.source import read_occurrences
+from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, words_of
 
 logger = logging.getLogger(__name__)
 SCAN = "[scanned books]"
 ASSIGNMENTS = "scan-occurrences.tsv"
+WORD_OCR = "scan-word-ocr.tsv"
+GLYPH_OCR = "scan-glyph-ocr.tsv"
+LABELS = "scan-labels.tsv"
 
 
 def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
@@ -34,7 +37,7 @@ def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
 
 
 def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: list[ScanPage]) -> None:
-    report = check_index(index, pages, read_excluded(arguments.excluded))
+    report = check_index(index, pages)
     out = arguments.layout.intermediate("scan-ambiguity")
     write_ambiguity(out, report, index.catalog, "../scan-index/shapes")
     verdicts = report.verdicts()
@@ -52,7 +55,7 @@ def _scan_index(arguments: argparse.Namespace) -> None:
     for page in pages:
         index.add(page)
     out = arguments.layout.intermediate("scan-index")
-    stats = write_index(out, index, read_excluded(arguments.excluded))
+    stats = write_index(out, index)
     if arguments.write_catalog:
         index.catalog.save(arguments.catalog)
         write_occurrences(assigned, index.occurrences)
@@ -63,93 +66,111 @@ def _scan_index(arguments: argparse.Namespace) -> None:
                                              "sheet": str(out / "shapes.html"), "catalog_written": arguments.write_catalog})
 
 
-def _scan_atlas(arguments: argparse.Namespace) -> None:
-    layout = arguments.layout
-    occurrences = read_occurrences(layout.intermediate("scan-index") / "occurrences.tsv")
-    out = layout.intermediate("scan-atlas")
-    source = AtlasInput(pymupdf.open(arguments.pdf), occurrences, load_catalog(arguments.catalog), read_excluded(arguments.excluded),
-                        frozenset(arguments.pages or ()))
-    ocr = Ocr(lambda mask: tesseract_reading(mask, arguments.tesseract), layout.state / "scan-ocr.tsv")
-    rows = build_rows(source, arguments.min_count, out, ocr)
-    path = out / (f"atlas-pages-{arguments.pages[0]}-{arguments.pages[-1]}.html" if arguments.pages else "atlas.html")
-    write_scan_atlas(path, rows, {shape.glyph: shape for shape in load_shapes(arguments.names)}, "../scan-index/shapes")
-    logger.info("scan atlas written", extra={"shapes": len(rows), "occurrences": sum(row.count for row in rows),
-                                             "with_proposal": sum(bool(row.proposal) for row in rows), "path": str(path)})
-
-
-def _scan_pages(arguments: argparse.Namespace) -> None:
+def _occurrences(arguments: argparse.Namespace, pages: list[int] | None = None) -> list[Occurrence]:
     occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
-    ranked = rank_pages(occurrences, read_excluded(arguments.excluded))
-    out = arguments.layout.intermediate("scan-pages")
-    out.mkdir(parents=True, exist_ok=True)
-    write_rows(out / "pages.tsv", ("rank", "page", "words", "shapes", "new_shapes", "ink_covered_after"),
-               [(rank, item.page, item.words, item.shapes, item.new_shapes, f"{item.covered_after:.3f}")
-                for rank, item in enumerate(ranked, start=1)])
-    logger.info("pages ranked by new shapes", extra={"first": [(item.page, item.new_shapes) for item in ranked[:10]],
-                                                     "path": str(out / "pages.tsv")})
+    return [item for item in occurrences if not pages or item.page in pages]
 
 
-def _occurrences_by_page(arguments: argparse.Namespace) -> dict[int, list[Occurrence]]:
-    by_page: dict[int, list[Occurrence]] = defaultdict(list)
-    for item in read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv"):
-        by_page[item.page].append(item)
-    return by_page
+def _renderer(arguments: argparse.Namespace) -> Callable[[int], Bitmap]:
+    document = pymupdf.open(arguments.pdf)
+
+    @cache
+    def page_ink(page: int) -> Bitmap:
+        return render_ink(document[page - 1])
+    return page_ink
 
 
-def _mapping(arguments: argparse.Namespace) -> dict[str, str]:
-    entries = compile_mapping(load_shapes(arguments.names), load_recipes(arguments.recipes))
-    return {glyphs: entry.unicode for glyphs, entry in entries.items()}
+def _texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
+    ocr = WordOcr(lambda image: tesseract_word(image, arguments.tesseract), arguments.layout.state / WORD_OCR)
+    return read_words(words, ink, ocr)
+
+
+def _scan_label(arguments: argparse.Namespace) -> None:
+    occurrences, ink = _occurrences(arguments), _renderer(arguments)
+    words = words_of(occurrences)
+    texts = _texts(arguments, words, ink)
+    glyph_ocr = GlyphOcr(lambda mask: tesseract_glyph(mask, arguments.tesseract), arguments.layout.state / GLYPH_OCR)
+    proposals = propose(occurrences, ink, glyph_ocr)
+    evidence = word_evidence(words, texts)
+    labels = infer(evidence, seed_labels(proposals), read_decisions(arguments.decisions), marks_of(occurrences))
+    write_labels(arguments.layout.state / LABELS, labels)
+    glyphs = [shape_id for word in evidence for shape_id in word.shape_ids]
+    complete = [word for word in evidence if all(shape_id in labels for shape_id in word.shape_ids)]
+    plain = {shape_id: label.unicode for shape_id, label in labels.items()}
+    logger.info("scan labels inferred", extra={
+        "words": len(evidence), "labelled_ids": len(labels), "ids": len(set(glyphs)),
+        "glyph_coverage": round(sum(shape_id in labels for shape_id in glyphs) / len(glyphs), 4) if glyphs else 0.0,
+        "complete_words": len(complete), "agreeing_words": sum(render(word.shape_ids, plain) == word.text for word in complete),
+        "sources": dict(Counter(label.source.value for label in labels.values())), "labels": str(arguments.layout.state / LABELS)})
+
+
+def _scan_review(arguments: argparse.Namespace) -> None:
+    occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
+    words = words_of(occurrences)
+    decisions = read_decisions(arguments.decisions)
+    source = ReviewInput(occurrences, read_labels(arguments.layout.state / LABELS), decisions=decisions, marks=marks_of(occurrences),
+                         texts=_texts(arguments, words, _renderer(arguments)), pages=frozenset(arguments.pages or ()))
+    rows = review_rows(source, arguments.top)
+    name = f"review-pages-{arguments.pages[0]}-{arguments.pages[-1]}.html" if arguments.pages else "review.html"
+    path = arguments.layout.intermediate("scan-review") / name
+    write_review(path, rows, decisions, "../scan-index/shapes")
+    logger.info("scan review sheet written", extra={"rows": len(rows), "flagged": sum(row.flagged for row in rows),
+                                                    "occurrences": sum(row.count for row in rows), "path": str(path),
+                                                    "save_export_as": str(arguments.decisions)})
 
 
 def _scan_convert(arguments: argparse.Namespace) -> None:
-    document = pymupdf.open(arguments.pdf)
-    by_page, mapping, excluded = _occurrences_by_page(arguments), _mapping(arguments), read_excluded(arguments.excluded)
+    occurrences = _occurrences(arguments, arguments.pages)
+    words = words_of(occurrences)
+    texts = _texts(arguments, words, _renderer(arguments))
+    labels = read_labels(arguments.layout.state / LABELS)
     out = arguments.layout.intermediate("scan-convert")
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
-    coverage, texts, pages = Coverage(), [], []
-    for number in arguments.pages or sorted(by_page):
-        page = document[number - 1]
-        converted = convert_scan_page(by_page[number], excluded, mapping, 1 / pixels_per_point(page), coverage)
-        text = "\n".join(converted.lines)
+    choices: Counter[Choice] = Counter()
+    pages: list[str] = []
+    disagreements: list[tuple[int, int, int, str, str]] = []
+    for number in sorted({key[0] for key in words}):
+        page = convert_scan_page({key: items for key, items in words.items() if key[0] == number}, labels, texts)
+        text = "\n".join(page.lines)
         (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
-        texts.append(text)
-        if arguments.quality:
-            pages.append(page_quality(number, compare_words(converted.words, arguments.ocr(page), MATCH_OVERLAP)))
-    (out / "book.txt").write_text("\n\f".join(texts) + "\n", encoding="utf-8", newline="\n")
-    write_rows(out / "unmapped.tsv", ("shape_id", "count"), unmapped_ids(coverage).most_common())
-    if arguments.quality:
-        write_quality_report(out / "quality", QualityReport(arguments.pdf.name, document.page_count, pages, []))
-    logger.info("scan conversion done", extra={"pages": len(texts), "coverage": round(coverage.ratio, 4), "mapped_entries": len(mapping),
-                                               "out": str(out), "ocr_calls": arguments.ocr.calls})
+        pages.append(text)
+        choices.update(page.choices)
+        disagreements.extend((*key, ours, ocr) for key, ours, ocr in page.disagreements)
+    (out / "book.txt").write_text("\n\f".join(pages) + "\n", encoding="utf-8", newline="\n")
+    write_rows(out / "disagreements.tsv", ("page", "line", "word", "ours", "word_ocr"), disagreements)
+    logger.info("scan conversion done", extra={"pages": len(pages), "choices": {choice.value: count for choice, count in choices.items()},
+                                               "disagreements": len(disagreements), "out": str(out)})
+
+
+def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
+    parser.add_argument("--pages", type=page_range, help=f"1-based, e.g. 51 or 4-13; default {default}")
+
+
+def _decisions_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--decisions", type=Path, help="reviewed labels; default fonts/<font>/scan/decisions.tsv")
 
 
 def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     index = commands.add_parser("scan-index", help=f"{SCAN} give every ink component of a scanned page a shape id")
-    index.add_argument("--pages", type=page_range, help="1-based, e.g. 4-13; default whole PDF")
+    _pages_option(index, "whole PDF")
     index.add_argument("--catalog", type=Path, help="shape catalog to extend; default files/<book>/state/scan-catalog.npz")
     index.add_argument("--rebuild", action="store_true", help="ignore an existing catalog and cluster from scratch")
     index.add_argument("--write-catalog", action="store_true", help="save the catalog so later runs keep these shape ids")
     index.add_argument("--max-stray", type=float, default=0.2, help="pre-filter: share of ink further than 1 grid pixel from the prototype")
     index.add_argument("--max-height-drift", type=float, default=0.2, help="abs log height difference, in body heights")
     index.add_argument("--max-aspect-drift", type=float, default=0.25, help="abs log aspect-ratio difference")
-    index.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
     index.add_argument("--ambiguity", action="store_true",
                        help="re-check every occurrence against the final shapes; report ambiguous and drifted ones separately")
     index.set_defaults(handler=_scan_index)
-    atlas = commands.add_parser("scan-atlas", help=f"{SCAN} labelling sheet: one row per shape id with crops and a Tesseract proposal")
-    atlas.add_argument("--min-count", type=int, default=3, help="list ids seen at least this often")
-    atlas.add_argument("--pages", type=page_range, help="only the ids on these pages, however rare, e.g. 51")
-    atlas.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
-    atlas.add_argument("--names", type=Path, help="names to pre-fill; default fonts/<font>/shape-naming/names.tsv")
-    atlas.set_defaults(handler=_scan_atlas)
-    pages = commands.add_parser("scan-pages", help=f"{SCAN} rank pages by how many new shape ids each adds, to label page by page")
-    pages.add_argument("--excluded", type=Path, help="shape ids left out of every list; default fonts/<font>/scan/excluded.tsv")
-    pages.set_defaults(handler=_scan_pages)
-    convert = commands.add_parser("scan-convert", help=f"{SCAN} convert scanned pages with the shape names and recipes")
-    convert.add_argument("--pages", type=page_range, help="1-based, e.g. 100-105; default every indexed page")
-    convert.add_argument("--names", type=Path, help="default fonts/<font>/shape-naming/names.tsv")
-    convert.add_argument("--recipes", type=Path, help="default fonts/<font>/shape-naming/recipes.tsv")
-    convert.add_argument("--excluded", type=Path, help="shape ids that contribute nothing; default fonts/<font>/scan/excluded.tsv")
-    convert.add_argument("--quality", action="store_true", help="compare every word with Tesseract (cached per page) and write a report")
+    label = commands.add_parser("scan-label", help=f"{SCAN} label every shape id from Tesseract word readings and reviewed decisions")
+    _decisions_option(label)
+    label.set_defaults(handler=_scan_label)
+    review = commands.add_parser("scan-review", help=f"{SCAN} one sheet of the top undecided shape ids, pre-filled, flagged ones first")
+    _pages_option(review, "every indexed page")
+    _decisions_option(review)
+    review.add_argument("--top", type=int, default=50, help="rows on the sheet")
+    review.set_defaults(handler=_scan_review)
+    convert = commands.add_parser("scan-convert", help=f"{SCAN} write Unicode text: our reading where it holds, else Tesseract's word")
+    _pages_option(convert, "every indexed page")
     convert.set_defaults(handler=_scan_convert)

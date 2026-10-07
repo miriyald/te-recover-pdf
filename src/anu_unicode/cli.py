@@ -49,7 +49,7 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
     arguments.mapping_given = getattr(arguments, "mapping", None) is not None
     defaults = {
         "profile": font / "profile.json", "mapping": font / OCR_LEARNING / "mapping.tsv",
-        "excluded": font / "scan" / "excluded.tsv",
+        "decisions": font / "scan" / "decisions.tsv",
         "names": shape_naming_dir / "names.tsv", "recipes": shape_naming_dir / "recipes.tsv", "candidate": shape_naming_dir / "mapping.tsv",
     }
     if arguments.book:

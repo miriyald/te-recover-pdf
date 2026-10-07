@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from anu_unicode.scan.catalog import ShapeCatalog, Thresholds, shape_of
-from anu_unicode.scan.index import AlphabetStats, ShapeIndex, alphabet_stats, write_index
+from anu_unicode.scan.index import EQUALS, AlphabetStats, ShapeIndex, alphabet_stats, write_index
 from anu_unicode.scan.ink import Component
 from anu_unicode.scan.page import ScanPage
 from anu_unicode.scan.words import Band, Placed, ScanWord
@@ -45,17 +45,18 @@ def test_strips_from_an_earlier_run_are_removed(tmp_path: Path) -> None:
     assert sorted(path.name for path in (tmp_path / "shapes").iterdir()) == ["0.png"]
 
 
-def test_excluded_ids_leave_the_sheet_and_the_statistics(tmp_path: Path) -> None:
+def test_equals_bars_get_no_catalog_id_and_stay_out_of_the_statistics(tmp_path: Path) -> None:
     index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
-    ring = np.ones((50, 50), dtype=bool)
-    ring[8:-8, 8:-8] = False
-    index.add(ScanPage(4, 50.0, [[_word(np.ones((50, 50), dtype=bool), ring)]]))
+    stroke = np.ones((10, 60), dtype=bool)
+    top, bottom = Placed(Component((0, 10, 60, 20), stroke), Band.MAIN), Placed(Component((0, 30, 60, 40), stroke), Band.MAIN)
+    equals = ScanWord((top, bottom), (0, 50))
 
-    stats = write_index(tmp_path, index, excluded=frozenset({0}))
+    index.add(ScanPage(4, 50.0, [[equals, _word(np.ones((50, 50), dtype=bool))]]))
+    stats = write_index(tmp_path, index)
 
-    assert stats.shapes == 1
-    assert [line.split("\t")[0] for line in (tmp_path / "shapes.tsv").read_text(encoding="utf-8").splitlines()[1:]] == ["1"]
-    assert (tmp_path / "shapes" / "0.png").exists()
+    assert [item.shape_id for item in index.occurrences] == [EQUALS, EQUALS, 0]
+    assert len(index.catalog) == 1
+    assert stats.occurrences == 1
 
 
 def test_an_unchanged_component_keeps_its_earlier_id_and_a_changed_one_is_matched_again() -> None:
