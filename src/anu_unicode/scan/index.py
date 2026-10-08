@@ -62,7 +62,7 @@ class ShapeIndex:
         before = len(self.catalog)
         for line_number, line in enumerate(page.lines, start=1):
             for word_number, word in enumerate(line, start=1):
-                equals = is_equals(word, page.body_height)
+                equals = is_equals(word, page.letter_height)
                 for position, placed in enumerate(word.glyphs, start=1):
                     shape_id = EQUALS if equals else self._shape_id(page, placed)
                     self.occurrences.append(Occurrence(page.number, line_number, word_number, position, shape_id, placed.band,

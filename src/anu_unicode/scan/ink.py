@@ -48,3 +48,8 @@ def find_components(ink: Bitmap, min_area: int) -> list[Component]:
 
 def median_height(components: list[Component]) -> float:
     return float(np.median([component.height for component in components]))
+
+
+def letter_height(components: list[Component]) -> float:
+    median = median_height(components)
+    return float(np.median([component.height for component in components if component.height >= median]))

@@ -4,21 +4,22 @@ import numpy as np
 import pymupdf
 from scipy import ndimage
 
-from anu_unicode.scan.ink import Component, find_components, median_height, render_ink
+from anu_unicode.scan.ink import Component, find_components, letter_height, median_height, render_ink
 from anu_unicode.scan.words import ScanWord, page_words
 
 MIN_AREA = 40
-FURNITURE_WIDTH = 8.0
+FURNITURE_WIDTH = 6.8
 MARGIN_ZONE = 0.15
-SPECK_SIZE = 0.3
-WORD_GAP = 0.45
-STACK_GAP = 0.3
+SPECK_SIZE = 0.25
+WORD_GAP = 0.38
+STACK_GAP = 0.25
 
 
 @dataclass(frozen=True)
 class ScanPage:
     number: int
     body_height: float
+    letter_height: float
     lines: list[list[ScanWord]]
 
 
@@ -47,14 +48,14 @@ def _with_dot(outer: Component, dot: Component) -> Component:
     return Component(outer.bbox, mask)
 
 
-def text_components(components: list[Component], body_height: float, page_height: int) -> list[Component]:
-    rules = [component for component in components if component.width > FURNITURE_WIDTH * body_height]
+def text_components(components: list[Component], letter: float, page_height: int) -> list[Component]:
+    rules = [component for component in components if component.width > FURNITURE_WIDTH * letter]
     top, bottom = _text_area(rules, page_height)
     text = [component for component in components
-            if component.width <= FURNITURE_WIDTH * body_height and top <= (component.bbox[1] + component.bbox[3]) / 2 <= bottom]
+            if component.width <= FURNITURE_WIDTH * letter and top <= (component.bbox[1] + component.bbox[3]) / 2 <= bottom]
     hosts: dict[int, Component] = {}
     dropped: set[int] = set()
-    for speck in (component for component in text if max(component.width, component.height) < SPECK_SIZE * body_height):
+    for speck in (component for component in text if max(component.width, component.height) < SPECK_SIZE * letter):
         outer = next((other for other in text if _inside(speck, other)), None)
         if outer is not None:
             dropped.add(id(speck))
@@ -66,6 +67,8 @@ def text_components(components: list[Component], body_height: float, page_height
 def scan_page(page: pymupdf.Page, number: int) -> ScanPage:
     ink = render_ink(page)
     components = find_components(ink, MIN_AREA)
-    body_height = median_height(components)
-    text = text_components(components, body_height, ink.shape[0])
-    return ScanPage(number, body_height, page_words(text, body_height, WORD_GAP, STACK_GAP))
+    if not components:
+        return ScanPage(number, 0.0, 0.0, [])
+    letter = letter_height(components)
+    text = text_components(components, letter, ink.shape[0])
+    return ScanPage(number, median_height(components), letter, page_words(text, letter, WORD_GAP, STACK_GAP))

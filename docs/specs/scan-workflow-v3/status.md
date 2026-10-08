@@ -2,7 +2,7 @@
 _Last updated: 2026-10-07_
 
 ## Current state
-In progress. Step 0 (measurement base) is done; the new gold pages wait for the user's check.
+In progress. Step 0 (measurement base) is done. All three gold pages are confirmed by the user; next is step 1a.
 
 ## Completed
 - The pilot work was committed and opened as draft PR #3, stacked on #2.
@@ -27,11 +27,33 @@ In progress. Step 0 (measurement base) is done; the new gold pages wait for the 
   | missing | 4 |
   | ocr overruled | 3 |
 
+- **Gold confirmed (2026-10-07).**
+  - The user kept `అదికాదరదం` as printed and corrected `తత్యథాభవతి` to `తత్ యథాభవతి` on page 197.
+  - Final baseline: **271/483 (56.1%)** for both ours and OCR. Misses: grouping 56, unlabelled 42, wrong label 11, extra 6, missing 4, ocr overruled 3.
+
+- **Step 1a: letter-height grouping.**
+  - **Evidence:** on Prasaaskhara the median piece height is the noisy unit. Over 198 pages it averages 50.1 px with an sd of 7.2, while letter height (the median of pieces at or above the median) averages 58.9 px with an sd of 3.9. On Naishadamu letter height is a steady 63 px against a median of 43–48.
+  - Grouping now uses letter height: the text-area rules, specks, word and stacking gaps, and `=` bars. The constants were restated at Prasaaskhara's mean ratio of 0.85: `FURNITURE_WIDTH` 6.8, `SPECK_SIZE` 0.25, `WORD_GAP` 0.38, `STACK_GAP` 0.25 and `BAR_HEIGHT` 0.3.
+  - **Decision:** shape normalisation keeps the median. Changing it would re-cluster Prasaaskhara and orphan its 157 reviewed decisions.
+  - Naishadamu gold, fresh index: **277/483** (was 271). grouping 36 (was 56), extra 2 (was 6), unlabelled 62 (was 42; words that are now whole but still unlabelled), wrong label 13, missing 4, ocr overruled 4.
+  - Prasaaskhara: page 51 stays at 95/99. Same as Tesseract 19,113 → 19,160; `=` 9,452; ఁ 1,026; ఱ 268; invented periods dropped 374 → 376; other 266 → 264.
+  - Remaining grouping misses:
+    - dandas that Tesseract drops; the tagger counts these as grouping;
+    - real splits inside words (`చి త్తమ్`, `దై. వము`, `వరు డు`). These call for a per-page word gap taken from that page's own gap distribution (new step 1e).
+    - a lone ః that Tesseract read as `క`.
+  - `/code-review`: 3 of 9 findings fixed:
+    - the word tests use the shipped gap constants;
+    - a blank scanned page returns an empty page instead of NaN heights;
+    - version 0.17.0.
+  - Left, with reasons: thresholds that differ by book are intended; letter height is robust to furniture; the two height units are the recorded decision; 82 of 83,800 kept ids were lost and page 51 is unchanged; median computed twice (trivial).
+  - Pre-existing and noted: `_member_shapes` rebuilds shapes without dot merging.
+  - `pytest`: 291 passed. `lint.cmd`: OK.
+
 ## In progress
-- The user checks gold pages 197 and 209. One doubtful word: `అదికాదరదం` on page 197, which may be `అధికాదరదం`.
+- None.
 
 ## Blocked / open issues
 - None.
 
 ## Next steps
-- Step 1a: letter-height body.
+- Step 1b: stroke repair before clustering.

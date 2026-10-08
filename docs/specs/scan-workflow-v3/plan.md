@@ -7,10 +7,11 @@ Stages 1–5 of `design.md`, built and measured in order. Each stage ends with a
 - [x] **0. Measurement base.**
   - The user confirms two more gold pages, which Claude drafts from the scans: a verse page and a `సమాసములు` page.
   - Move `score_page.py` and `page_misses.py` from `docs/temp` into a `scan-evaluate` command, with cause tags. Tests included.
-- [ ] **1a.** Letter-height body: an upper-peak estimator, with Prasaaskhara thresholds kept by re-expressing the gap constants. Tests come first.
+- [x] **1a.** Letter-height body: an upper-peak estimator, with Prasaaskhara thresholds kept by re-expressing the gap constants. Tests come first.
 - [ ] **1b.** Stroke repair before clustering (fragment → host). Measure one-off ids and coverage before and after.
 - [ ] **1c.** Drop loose specks.
 - [ ] **1d.** `scan-grouping-review`: a sheet of doubtful groupings, with an exported decisions file that grouping reads back.
+- [ ] **1e.** Per-page word gap from the page's own gap distribution (the threshold between the in-word and between-word groups), for splits inside words such as `చి త్తమ్`.
 - [ ] **Gate 1.** Fresh index of 20 consecutive Naishadamu pages and the gold pages. Report grouping errors on gold, one-off ids, coverage and gold accuracy, then stop.
 - [ ] **2.** Trust from shape evidence (`MIN_SUPPORT`), the review queue for under-supported labels, and the confusion table in the recheck.
 - [ ] **3.** Review ranking by words completed, and recipe drafts with evidence on the sheet.

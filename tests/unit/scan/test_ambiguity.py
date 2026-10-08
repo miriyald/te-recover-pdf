@@ -46,7 +46,7 @@ def test_a_shape_matching_two_ids_lists_both_best_first() -> None:
 def test_report_flags_shared_occurrences_and_writes_its_own_folder(tmp_path: Path) -> None:
     catalog = ShapeCatalog(Thresholds(0.2, 0.2, 0.25))
     index = ShapeIndex(catalog)
-    page = ScanPage(4, BODY, [[ScanWord((Placed(Component((0, 0, 50, 50), _ring()), Band.MAIN),), (0, 50))]])
+    page = ScanPage(4, BODY, BODY, [[ScanWord((Placed(Component((0, 0, 50, 50), _ring()), Band.MAIN),), (0, 50))]])
     index.add(page)
     write_index(tmp_path / "scan-index", index)
     catalog._add(_shape(np.roll(_ring(), 1, axis=1)))  # pylint: disable=protected-access

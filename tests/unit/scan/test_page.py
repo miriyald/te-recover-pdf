@@ -1,7 +1,11 @@
-import numpy as np
+import io
 
-from anu_unicode.scan.ink import Component
-from anu_unicode.scan.page import text_components
+import numpy as np
+import pymupdf
+from PIL import Image
+
+from anu_unicode.scan.ink import Component, letter_height, median_height
+from anu_unicode.scan.page import scan_page, text_components
 
 BODY = 50.0
 PAGE_HEIGHT = 1000
@@ -9,6 +13,25 @@ PAGE_HEIGHT = 1000
 
 def _block(left: int, top: int, width: int, height: int) -> Component:
     return Component((left, top, left + width, top + height), np.ones((height, width), dtype=bool))
+
+
+def test_letter_height_follows_the_letters_not_the_many_small_marks() -> None:
+    letters = [_block(index * 60, 0, 40, height) for index, height in enumerate((60, 62, 63, 64))]
+    marks = [_block(index * 30, 100, 20, height) for index, height in enumerate((10, 12, 28, 30, 38, 40))]
+
+    assert median_height([*letters, *marks]) == 39.0
+    assert letter_height([*letters, *marks]) == 62.0
+
+
+def test_a_blank_scanned_page_has_no_lines_and_no_heights() -> None:
+    white = io.BytesIO()
+    Image.new("L", (200, 300), 255).save(white, format="PNG")
+    document = pymupdf.open()
+    document.new_page(width=200, height=300).insert_image(pymupdf.Rect(0, 0, 200, 300), stream=white.getvalue())
+
+    page = scan_page(document[0], 1)
+
+    assert (page.body_height, page.letter_height, page.lines) == (0.0, 0.0, [])
 
 
 def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> None:
