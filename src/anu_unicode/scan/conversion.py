@@ -28,11 +28,22 @@ class Choice(StrEnum):
     UNREAD = "unread"
 
 
+@dataclass(frozen=True)
+class Written:
+    keys: tuple[WordKey, ...]
+    text: str
+    choices: tuple[Choice, ...]
+
+
 @dataclass
 class ScanText:
-    lines: list[str] = field(default_factory=list)
+    written: list[list[Written]] = field(default_factory=list)
     choices: Counter[Choice] = field(default_factory=Counter)
     disagreements: list[tuple[WordKey, str, str]] = field(default_factory=list)
+
+    @property
+    def lines(self) -> list[str]:
+        return [" ".join(word.text for word in line) for line in self.written]
 
 
 def readable(text: str) -> str:
@@ -46,32 +57,36 @@ class Reading:
     speller: Speller
 
 
-def _word(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> str:
+def equals_word(items: list[Occurrence]) -> bool:
+    return all(item.shape_id == EQUALS for item in items)
+
+
+def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> tuple[str, Choice]:
+    if equals_word(items):
+        return "=", Choice.EQUALS
     shape_ids = [item.shape_id for item in items]
-    if all(shape_id == EQUALS for shape_id in shape_ids):
-        page.choices[Choice.EQUALS] += 1
-        return "="
     ocr = clean_ocr(ocr)
     labels = reading.labels
     ours = reading.speller.spell(shape_ids, reading.names)
     complete = UNMAPPED_OPEN not in ours
     if complete and comparable_text(ours) == comparable_text(ocr):
-        page.choices[Choice.AGREED] += 1
-        return ours
+        return ours, Choice.AGREED
     reviewed = [labels[shape_id].source is Source.REVIEW for shape_id in shape_ids] if complete else []
     if reviewed and (all(reviewed) or (any(reviewed) and ocr and _strong_neighbours(shape_ids, labels))):
-        page.choices[Choice.REVIEWED] += 1
-        return ours
+        return ours, Choice.REVIEWED
     if complete and ocr:
         page.disagreements.append((key, ours, ocr))
     if ocr:
-        page.choices[Choice.WORD_OCR] += 1
-        return ocr
+        return ocr, Choice.WORD_OCR
     if complete:
-        page.choices[Choice.UNREAD] += 1
-        return ""
-    page.choices[Choice.GAP] += 1
-    return readable(ours)
+        return "", Choice.UNREAD
+    return readable(ours), Choice.GAP
+
+
+def _word(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> Written:
+    text, choice = _choose(key, items, reading, ocr, page)
+    page.choices[choice] += 1
+    return Written((key,), text, (choice,))
 
 
 def _strong_neighbours(shape_ids: list[int], labels: Mapping[int, Label]) -> bool:
@@ -86,15 +101,15 @@ def _ends_telugu(text: str) -> bool:
     return bool(text) and TELUGU[0] <= text[-1] <= TELUGU[1]
 
 
-def _joined(texts: list[str]) -> str:
-    words: list[str] = []
-    for text in texts:
-        host = words[-1].rstrip("".join(OCR_NOISE)) if words else ""
-        if _starts_dependent(text) and _ends_telugu(host):
-            words[-1] = host + text
+def _joined(line: list[Written]) -> list[Written]:
+    words: list[Written] = []
+    for word in line:
+        host = words[-1].text.rstrip("".join(OCR_NOISE)) if words else ""
+        if _starts_dependent(word.text) and _ends_telugu(host):
+            words[-1] = Written(words[-1].keys + word.keys, host + word.text, words[-1].choices + word.choices)
         else:
-            words.append(text)
-    return " ".join(words)
+            words.append(word)
+    return words
 
 
 def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping[int, Label], texts: Mapping[WordKey, str],
@@ -102,5 +117,6 @@ def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping
     reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller)
     page = ScanText()
     for _, line in groupby(sorted(words), key=lambda key: key[:2]):
-        page.lines.append(_joined([text for text in (_word(key, words[key], reading, texts.get(key, ""), page) for key in line) if text]))
+        written = (_word(key, words[key], reading, texts.get(key, ""), page) for key in line)
+        page.written.append(_joined([word for word in written if word.text]))
     return page

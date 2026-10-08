@@ -42,6 +42,8 @@ def test_a_word_that_starts_with_a_dependent_sign_joins_the_word_before_it() -> 
     page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 1): "క", (4, 1, 2): "8", (4, 1, 3): "ము"}, SPELLER)
 
     assert page.lines == ["కః ము"]
+    assert [(word.keys, word.choices) for word in page.written[0]] == [
+        (((4, 1, 1), (4, 1, 2)), (Choice.AGREED, Choice.REVIEWED)), (((4, 1, 3),), (Choice.AGREED,))]
 
 
 def test_a_dependent_sign_never_joins_an_equals_sign() -> None:

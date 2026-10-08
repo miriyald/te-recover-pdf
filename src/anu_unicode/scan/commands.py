@@ -1,9 +1,12 @@
 import argparse
+import base64
+import io
 import logging
+import re
 import shutil
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import cache
 from itertools import groupby
 from pathlib import Path
@@ -16,7 +19,8 @@ from anu_unicode.mapping import write_rows
 from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
 from anu_unicode.scan.catalog import Shape, ShapeCatalog, Thresholds, load_catalog, shape_of
 from anu_unicode.scan.checks import check_decisions, write_rechecks
-from anu_unicode.scan.conversion import Choice, convert_scan_page
+from anu_unicode.scan.conversion import Choice, ScanText, convert_scan_page, equals_word
+from anu_unicode.scan.evaluation import Miss, score_page, write_misses, write_scores
 from anu_unicode.scan.glyph_ocr import GlyphOcr, largest_component, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
@@ -27,7 +31,7 @@ from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
 from anu_unicode.scan.split import Division, divide, find_mixed, readings
-from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, words_of
+from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, word_box, word_image, words_of
 from anu_unicode.shape_naming.shapes import load_recipes
 
 logger = logging.getLogger(__name__)
@@ -36,6 +40,8 @@ ASSIGNMENTS = "scan-occurrences.tsv"
 WORD_OCR = "scan-word-ocr.tsv"
 GLYPH_OCR = "scan-glyph-ocr.tsv"
 LABELS = "scan-labels.tsv"
+GOLD_FILE = re.compile(r"page-(\d+)\.txt")
+CROP_SIZE = (900, 140)
 
 
 def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
@@ -195,20 +201,36 @@ def _scan_split(arguments: argparse.Namespace) -> None:
                                                   "report": str(out / "splits.tsv")})
 
 
-def _scan_convert(arguments: argparse.Namespace) -> None:
-    occurrences = _occurrences(arguments, arguments.pages)
-    words = words_of(occurrences)
-    texts = _texts(arguments, words, _renderer(arguments))
+@dataclass(frozen=True)
+class Conversion:
+    words: dict[WordKey, list[Occurrence]]
+    texts: dict[WordKey, str]
+    ink: Callable[[int], Bitmap]
+    pages: list[tuple[int, dict[WordKey, list[Occurrence]], ScanText]]
+
+
+def _conversion(arguments: argparse.Namespace, pages: list[int] | None) -> Conversion:
+    words = words_of(_occurrences(arguments, pages))
+    ink = _renderer(arguments)
+    texts = _texts(arguments, words, ink)
     labels = read_labels(arguments.layout.state / LABELS)
     speller = _speller(arguments, read_decisions(arguments.decisions))
+    converted = []
+    for number in sorted({key[0] for key in words}):
+        page_words = {key: items for key, items in words.items() if key[0] == number}
+        converted.append((number, page_words, convert_scan_page(page_words, labels, texts, speller)))
+    return Conversion(words, texts, ink, converted)
+
+
+def _scan_convert(arguments: argparse.Namespace) -> None:
+    conversion = _conversion(arguments, arguments.pages)
     out = arguments.layout.intermediate("scan-convert")
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     choices: Counter[Choice] = Counter()
     pages: list[str] = []
     disagreements: list[tuple[int, int, int, str, str]] = []
-    for number in sorted({key[0] for key in words}):
-        page = convert_scan_page({key: items for key, items in words.items() if key[0] == number}, labels, texts, speller)
+    for number, _, page in conversion.pages:
         text = "\n".join(page.lines)
         (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
         pages.append(text)
@@ -218,6 +240,46 @@ def _scan_convert(arguments: argparse.Namespace) -> None:
     write_rows(out / "disagreements.tsv", ("page", "line", "word", "ours", "word_ocr"), disagreements)
     logger.info("scan conversion done", extra={"pages": len(pages), "choices": {choice.value: count for choice, count in choices.items()},
                                                "disagreements": len(disagreements), "out": str(out)})
+
+
+def gold_folder(value: str) -> dict[int, str]:
+    folder = Path(value)
+    pages = {int(match.group(1)): path.read_text(encoding="utf-8")
+             for path in sorted(folder.glob("page-*.txt")) if (match := GOLD_FILE.fullmatch(path.name))}
+    if not pages:
+        raise argparse.ArgumentTypeError(f"no page-<number>.txt files in {folder}")
+    return pages
+
+
+def _crop(ink: Bitmap, boxes: list[tuple[int, int, int, int]]) -> str:
+    merged = min(box[0] for box in boxes), min(box[1] for box in boxes), max(box[2] for box in boxes), max(box[3] for box in boxes)
+    image = word_image(ink, merged)
+    image.thumbnail(CROP_SIZE)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def _ocr_alone(words: dict[WordKey, list[Occurrence]], texts: dict[WordKey, str]) -> str:
+    return " ".join("=" if equals_word(words[key]) else texts.get(key, "") for key in sorted(words))
+
+
+def _scan_evaluate(arguments: argparse.Namespace) -> None:
+    golds: dict[int, str] = arguments.gold
+    conversion = _conversion(arguments, sorted(golds))
+    scores = [score_page(number, golds[number], converted, _ocr_alone(page_words, conversion.texts), conversion.texts)
+              for number, page_words, converted in conversion.pages]
+    out = arguments.layout.intermediate("scan-evaluate")
+    write_scores(out / "scores.tsv", scores)
+
+    def miss_crop(miss: Miss) -> str | None:
+        return _crop(conversion.ink(miss.page), [word_box(conversion.words[key]) for key in miss.keys]) if miss.keys else None
+    write_misses(out / "misses.html", scores, miss_crop)
+    logger.info("scan evaluation done", extra={
+        "pages": [score.page for score in scores], "missing_pages": sorted(set(golds) - {score.page for score in scores}),
+        "gold_words": sum(score.gold_words for score in scores), "ours_exact": sum(score.ours_exact for score in scores),
+        "ocr_exact": sum(score.ocr_exact for score in scores),
+        "causes": dict(Counter(miss.cause.value for score in scores for miss in score.misses)), "out": str(out)})
 
 
 def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
@@ -253,6 +315,10 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     _pages_option(convert, "every indexed page")
     _decisions_option(convert)
     convert.set_defaults(handler=_scan_convert)
+    evaluate = commands.add_parser("scan-evaluate", help=f"{SCAN} score indexed pages against gold text; write cause-tagged misses")
+    evaluate.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt files holding the correct text")
+    _decisions_option(evaluate)
+    evaluate.set_defaults(handler=_scan_evaluate)
     split = commands.add_parser("scan-split", help=f"{SCAN} find shape ids that hold two shapes and split them (report unless --apply)")
     _decisions_option(split)
     split.add_argument("--catalog", type=Path, help="default files/<book>/state/scan-catalog.npz")
