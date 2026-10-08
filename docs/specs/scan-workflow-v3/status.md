@@ -125,6 +125,23 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - `ScanProfile` was split into `Grouping` (the grouping unit and thresholds) plus `shape_unit`, to satisfy lint. JSON profiles stay flat.
   - `/code-review` fixes: profile keys are checked against the known flat names, with an error that lists them; unit conversion is back to a simple set; a test constant was renamed. Left: field names as the JSON contract (now validated); the split kept rather than an inline lint disable; JIRA (skipped by the user).
 
+- **Gate 1 (2026-10-08):** fresh index of pages 195–214 (20 consecutive pages, including the three gold pages), with no review.
+
+  | Measure | 3 gold pages | 20 pages |
+  |---|---|---|
+  | Ink pieces | 2,661 | 15,193 |
+  | Shape ids | 1,109 | 3,196 |
+  | One-off ids | 788 | 1,995 (13% of pieces) |
+  | **Glyph coverage** | 22% | **63%** |
+  | Labelled ids | 80 | 503 |
+  | Complete words | — | 505 of 1,770 |
+  | Gold exact (ours = OCR) | 298/483 | 298/483 |
+
+  - Gold misses: unlabelled 77, grouping 21, **ocr overruled 10** (was 1), wrong label 6, missing 1, extra 1.
+  - The review sheet has 50 rows covering 3,126 of 15,193 pieces (21%).
+  - Run time: 6 min 54 s for 20 pages.
+  - **Reading:** coverage recovers with recurrence, as predicted, so grouping on phrases is fine. Gold doesn't move yet, because our complete readings still lose to Tesseract: 10 overruled. That is exactly what step 2 (trust from shape evidence) targets.
+
 ## In progress
 - None.
 
@@ -132,4 +149,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- Gate 1: a fresh index of 20 consecutive Naishadamu pages (195–214) plus the gold pages; report coverage, one-off ids and gold accuracy, then stop.
+- Step 2: trust from shape evidence (`MIN_SUPPORT`), the review queue for under-supported labels, and the per-book confusion table in the recheck. Waiting for the user's go-ahead after Gate 1.
