@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -7,12 +8,14 @@ from itertools import groupby
 
 from anu_unicode.convert import UNMAPPED_OPEN
 from anu_unicode.scan.index import EQUALS, Occurrence
-from anu_unicode.scan.inference import Label, Source, clean_ocr, comparable_text
+from anu_unicode.scan.inference import OCR_NOISE, Label, Source, clean_ocr, comparable_text
 from anu_unicode.scan.names import Speller
 from anu_unicode.scan.source import SHAPE_BASE, SHAPE_LIMIT, shape_id_of
 from anu_unicode.scan.word_ocr import WordKey
 
 STRONG_AGREEMENT = 0.8
+DEPENDENT_SIGNS = frozenset({"Mn", "Mc"})
+TELUGU = ("ఀ", "౿")
 SHAPE_CHAR = re.compile(f"[{chr(SHAPE_BASE)}-{chr(SHAPE_LIMIT)}]")
 
 
@@ -75,10 +78,29 @@ def _strong_neighbours(shape_ids: list[int], labels: Mapping[int, Label]) -> boo
     return all(labels[shape_id].source is Source.REVIEW or labels[shape_id].agreement >= STRONG_AGREEMENT for shape_id in shape_ids)
 
 
+def _starts_dependent(text: str) -> bool:
+    return unicodedata.category(text[0]) in DEPENDENT_SIGNS
+
+
+def _ends_telugu(text: str) -> bool:
+    return bool(text) and TELUGU[0] <= text[-1] <= TELUGU[1]
+
+
+def _joined(texts: list[str]) -> str:
+    words: list[str] = []
+    for text in texts:
+        host = words[-1].rstrip("".join(OCR_NOISE)) if words else ""
+        if _starts_dependent(text) and _ends_telugu(host):
+            words[-1] = host + text
+        else:
+            words.append(text)
+    return " ".join(words)
+
+
 def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping[int, Label], texts: Mapping[WordKey, str],
                       speller: Speller) -> ScanText:
     reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller)
     page = ScanText()
     for _, line in groupby(sorted(words), key=lambda key: key[:2]):
-        page.lines.append(" ".join(text for text in (_word(key, words[key], reading, texts.get(key, ""), page) for key in line) if text))
+        page.lines.append(_joined([text for text in (_word(key, words[key], reading, texts.get(key, ""), page) for key in line) if text]))
     return page

@@ -35,6 +35,33 @@ def test_a_word_with_a_reviewed_id_keeps_our_reading_over_word_ocr() -> None:
     assert page.choices == {Choice.REVIEWED: 1}
 
 
+def test_a_word_that_starts_with_a_dependent_sign_joins_the_word_before_it() -> None:
+    labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
+    occurrences = [_at(1, 1, 1, 1), _at(1, 2, 1, 9), _at(1, 3, 1, 3)]
+
+    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 1): "క", (4, 1, 2): "8", (4, 1, 3): "ము"}, SPELLER)
+
+    assert page.lines == ["కః ము"]
+
+
+def test_a_dependent_sign_never_joins_an_equals_sign() -> None:
+    labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
+    occurrences = [_at(1, 1, 1, EQUALS), _at(1, 1, 2, EQUALS), _at(1, 2, 1, 9)]
+
+    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 2): "8"}, SPELLER)
+
+    assert page.lines == ["= ః"]
+
+
+def test_a_period_before_a_joined_dependent_sign_is_dropped_as_invented() -> None:
+    labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
+    occurrences = [_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 2, 1, 9)]
+
+    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 1): "కై.", (4, 1, 2): "8"}, SPELLER)
+
+    assert page.lines == ["కైః"]
+
+
 def test_a_reviewed_id_does_not_override_ocr_when_a_neighbour_is_weak() -> None:
     labels = {1: Label("క", Source.WORDS, 2, 0.5), 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
@@ -45,12 +72,12 @@ def test_a_reviewed_id_does_not_override_ocr_when_a_neighbour_is_weak() -> None:
 
 
 def test_a_word_tesseract_cannot_read_is_written_only_from_reviewed_ids() -> None:
-    words = words_of([_at(1, 1, 1, 1), _at(1, 2, 1, 3), _at(1, 3, 1, 2)])
+    words = words_of([_at(1, 1, 1, 1), _at(1, 2, 1, 3), _at(1, 3, 1, 1)])
     labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page(words, labels, {(4, 1, 3): "ా"}, SPELLER)
+    page = convert_scan_page(words, labels, {(4, 1, 3): "క"}, SPELLER)
 
-    assert page.lines == ["ము ా"]
+    assert page.lines == ["ము క"]
     assert page.choices == {Choice.UNREAD: 1, Choice.REVIEWED: 1, Choice.AGREED: 1}
 
 

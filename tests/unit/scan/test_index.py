@@ -72,3 +72,15 @@ def test_an_unchanged_component_keeps_its_earlier_id_and_a_changed_one_is_matche
     assert [item.shape_id for item in index.occurrences] == [3, 0]
     assert index.kept == 1
     assert [item.ink for item in index.occurrences] == [2500, 2500]
+
+
+def test_an_earlier_id_from_another_band_is_not_kept() -> None:
+    square = np.ones((50, 50), dtype=bool)
+    catalog = ShapeCatalog(Thresholds(0.15, 0.2, 0.25))
+    catalog._add(shape_of(Component((0, 0, 50, 50), square), Band.ABOVE, 50.0))  # pylint: disable=protected-access
+    index = ShapeIndex(catalog, {(4, (0, 0, 50, 50)): (0, 2500)})
+
+    index.add(ScanPage(4, 50.0, [[_word(square)]]))
+
+    assert [item.shape_id for item in index.occurrences] == [1]
+    assert index.kept == 0

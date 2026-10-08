@@ -1,0 +1,14 @@
+names	unicode	note
+slash	∅	draft: head fragment broken off its letter (య, శ, న, మ, ను); the letter's body carries the reading
+right_top	∅	draft: top of the ు hook or letter head broken off (ను, ని, ము, కు)
+na_base tick	స	draft: సమాసములు, స్వభావ, స్మః, విజయస్వ
+ప tick	ప	draft: పథోపగతమ్, రూపింప, సరిపడినవి
+స tick	స	draft: సఖి, తదస్పక్
+ra_base	ర	draft: శరీరమును, మేర్చ, శిరస్సు, వపుర్ద
+pu_base	పు	draft: పుష్పమును, పుష్పముగ, పుష్పబాణ, ప్రయోగించునపుడు
+ha_base	హ	draft: హృదయ, గ్రహణ, బాహ్య
+ha_base ఇ	హ	draft: the ఇ-shaped piece is హ's right tail (స్పృహ, హృదయ)
+త_base	త	draft: సంతమ్, అంతః, తయా, అత్యధిక
+pipe	।	draft: single danda
+pipe pipe	॥	draft: double danda (శ్లో॥, ప॥వి॥, వస్తుని॥)
+dot	.	draft: full stop; colon halves need the stacking fix

@@ -52,7 +52,8 @@ class ShapeIndex:
     def _shape_id(self, page: ScanPage, placed: Placed) -> int:
         shape = shape_of(placed.component, placed.band, page.body_height)
         earlier = self.previous.get((page.number, placed.component.bbox))
-        if earlier is not None and earlier[1] == int(placed.component.mask.sum()) and 0 <= earlier[0] < len(self.catalog):
+        if (earlier is not None and earlier[1] == int(placed.component.mask.sum()) and 0 <= earlier[0] < len(self.catalog)
+                and self.catalog.prototype_shape(earlier[0]).band is placed.band):
             self.kept += 1
             return self.catalog.keep(earlier[0], shape)
         return self.catalog.assign(shape)
