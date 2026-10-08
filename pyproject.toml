@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anu-unicode"
-version = "0.24.0"
+version = "0.25.0"
 description = "Discover glyph-sequence mappings and convert Anu (ASCII) Telugu PDFs to Unicode"
 requires-python = ">=3.13"
 dependencies = [

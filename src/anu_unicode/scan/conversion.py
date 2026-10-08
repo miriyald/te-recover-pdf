@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from itertools import groupby
 
-from anu_unicode.convert import UNMAPPED_OPEN
+from anu_unicode.convert import UNMAPPED_CLOSE, UNMAPPED_OPEN
 from anu_unicode.scan.index import EQUALS, Occurrence
 from anu_unicode.scan.inference import OCR_NOISE, Label, Source, clean_ocr, comparable_text
 from anu_unicode.scan.ink import letter_of
@@ -18,6 +18,8 @@ STRONG_AGREEMENT = 0.8
 DEPENDENT_SIGNS = frozenset({"Mn", "Mc"})
 TELUGU = ("ఀ", "౿")
 SHAPE_CHAR = re.compile(f"[{chr(SHAPE_BASE)}-{chr(SHAPE_LIMIT)}]")
+UNMAPPED_SPAN = re.compile(f"{UNMAPPED_OPEN}([^{UNMAPPED_CLOSE}]*){UNMAPPED_CLOSE}")
+PLACEHOLDER = "□"
 
 
 class Choice(StrEnum):
@@ -41,6 +43,7 @@ class ScanText:
     written: list[list[Written]] = field(default_factory=list)
     choices: Counter[Choice] = field(default_factory=Counter)
     disagreements: list[tuple[WordKey, str, str]] = field(default_factory=list)
+    gaps: list[tuple[WordKey, str]] = field(default_factory=list)
 
     @property
     def lines(self) -> list[str]:
@@ -49,6 +52,10 @@ class ScanText:
 
 def readable(text: str) -> str:
     return SHAPE_CHAR.sub(lambda match: f"#{shape_id_of(match.group())}", text)
+
+
+def _unread_spans(text: str) -> list[str]:
+    return [readable(span) for span in UNMAPPED_SPAN.findall(text)]
 
 
 @dataclass(frozen=True)
@@ -95,7 +102,10 @@ def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, p
         page.disagreements.append((key, ours, ocr))
     if ocr:
         return ocr, Choice.WORD_OCR
-    return ("", Choice.UNREAD) if complete else (readable(ours), Choice.GAP)
+    if complete:
+        return "", Choice.UNREAD
+    page.gaps.append((key, " ".join(_unread_spans(ours))))
+    return UNMAPPED_SPAN.sub(PLACEHOLDER, ours), Choice.GAP
 
 
 def _ours_wins(shape_ids: list[int], reading: Reading, ours: str, ocr: str) -> Choice | None:

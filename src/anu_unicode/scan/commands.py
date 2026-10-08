@@ -6,7 +6,7 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import astuple, dataclass, replace
 from functools import cache
 from itertools import groupby
 from pathlib import Path
@@ -20,7 +20,7 @@ from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
 from anu_unicode.scan.catalog import Shape, ShapeCatalog, Thresholds, load_catalog, shape_of
 from anu_unicode.scan.checks import check_decisions, write_rechecks
 from anu_unicode.scan.conversion import Choice, ScanText, convert_scan_page, equals_word
-from anu_unicode.scan.evaluation import Miss, score_page, write_misses, write_scores
+from anu_unicode.scan.evaluation import Errors, Miss, Score, score_page, write_misses, write_scores
 from anu_unicode.scan.glyph_ocr import GlyphOcr, largest_component, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
@@ -292,16 +292,19 @@ def _scan_convert(arguments: argparse.Namespace) -> None:
     choices: Counter[Choice] = Counter()
     pages: list[str] = []
     disagreements: list[tuple[int, int, int, str, str]] = []
+    gaps: list[tuple[int, int, int, str]] = []
     for number, _, page in conversion.pages:
         text = "\n".join(page.lines)
         (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
         pages.append(text)
         choices.update(page.choices)
         disagreements.extend((*key, ours, ocr) for key, ours, ocr in page.disagreements)
+        gaps.extend((*key, missing) for key, missing in page.gaps)
     (out / "book.txt").write_text("\n\f".join(pages) + "\n", encoding="utf-8", newline="\n")
     write_rows(out / "disagreements.tsv", ("page", "line", "word", "ours", "word_ocr"), disagreements)
+    write_rows(out / "gaps.tsv", ("page", "line", "word", "missing"), gaps)
     logger.info("scan conversion done", extra={"pages": len(pages), "choices": {choice.value: count for choice, count in choices.items()},
-                                               "disagreements": len(disagreements), "out": str(out)})
+                                               "disagreements": len(disagreements), "gaps": len(gaps), "out": str(out)})
 
 
 def gold_folder(value: str) -> dict[int, str]:
@@ -326,6 +329,11 @@ def _ocr_alone(words: dict[WordKey, list[Occurrence]], texts: dict[WordKey, str]
     return " ".join("=" if equals_word(words[key]) else texts.get(key, "") for key in sorted(words))
 
 
+def _totals(name: str, scores: Sequence[Score | Errors]) -> dict[str, int]:
+    return {f"{name}_total": sum(astuple(score)[0] for score in scores), f"{name}_ours": sum(score.ours for score in scores),
+            f"{name}_ocr": sum(score.ocr for score in scores)}
+
+
 def _scan_evaluate(arguments: argparse.Namespace) -> None:
     golds: dict[int, str] = arguments.gold
     conversion = _conversion(arguments, sorted(golds))
@@ -339,8 +347,8 @@ def _scan_evaluate(arguments: argparse.Namespace) -> None:
     write_misses(out / "misses.html", scores, miss_crop)
     logger.info("scan evaluation done", extra={
         "pages": [score.page for score in scores], "missing_pages": sorted(set(golds) - {score.page for score in scores}),
-        "gold_words": sum(score.gold_words for score in scores), "ours_exact": sum(score.ours_exact for score in scores),
-        "ocr_exact": sum(score.ocr_exact for score in scores),
+        **_totals("words", [score.words for score in scores]), **_totals("letter_words", [score.letter_words for score in scores]),
+        **_totals("letter_errors", [score.letter_errors for score in scores]),
         "causes": dict(Counter(miss.cause.value for score in scores for miss in score.misses)), "out": str(out)})
 
 

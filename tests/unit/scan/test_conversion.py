@@ -115,11 +115,12 @@ def test_a_reviewed_name_no_recipe_covers_falls_back_to_word_ocr() -> None:
     assert page.choices == {Choice.WORD_OCR: 1}
 
 
-def test_a_word_with_no_ocr_and_an_unlabelled_id_shows_the_numbered_gap() -> None:
-    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 77)]), LABELS, {}, SPELLER)
+def test_an_unreadable_stretch_is_a_placeholder_box_and_its_ids_go_to_the_gaps_report() -> None:
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 1, 3, 78)]), LABELS, {}, SPELLER)
 
-    assert page.lines == ["క⟦#77⟧"]
+    assert page.lines == ["క□"]
     assert page.choices == {Choice.GAP: 1}
+    assert page.gaps == [((4, 1, 1), "#77#78")]
 
 
 def test_readable_replaces_only_shape_characters() -> None:

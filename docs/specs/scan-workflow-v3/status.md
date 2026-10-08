@@ -208,6 +208,31 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - **Result: 325/483 (67.3%) against 298 for OCR alone.** Coverage 70.5% (749 ids), complete units 715. Misses: unlabelled 69, grouping 18, ocr overruled 6, missing 4, wrong label 4, extra 1.
   - **Lesson for the sheet:** a reviewer sees each shape out of context and can mistake a stroke or mark for punctuation. Showing a shape's words, as the crops did here, is what settled it. That argues for word crops on the review sheet itself, not just example text.
 
+- **Metric revision (2026-10-09, user direction):** punctuation and small marks are accepted data loss, and unreadable stretches become a placeholder box.
+  - **Output:** every unreadable stretch is written as `□` (U+25A1), never `⟦#id⟧`. Its shape ids go to `scan-convert/gaps.tsv` (`page`, `line`, `word`, `missing`). On 20 pages: 10 gaps.
+  - **Metrics** (`scan-evaluate`), for ours and for OCR alone:
+    - **letter words exact (primary):** a token's letters are its Telugu letters and signs, U+0C00–U+0C63. Punctuation, dandas, digits, ASCII and `□` are removed, and empty tokens drop out.
+    - **letter error rate (primary):** edit distance over the page's letters;
+    - the strict word score, kept as a secondary column.
+    - Misses and causes are computed on letter tokens. A word written only as `□` stays an `unlabelled` miss.
+  - **Finding: on letters we are level with OCR.**
+
+    | Metric | Ours | OCR alone |
+    |---|---|---|
+    | Letter words | 255/370 (68.9%) | 253/370 (68.4%) |
+    | Letter error rate | 8.7% (229/2,637) | 8.7% (229/2,637) |
+    | Strict words (secondary) | 325/483 | 298/483 |
+
+    The strict-score advantage came almost entirely from punctuation (`=`, dandas, colons). Letter misses: unlabelled 53, grouping 15, ocr overruled 4, wrong label 4, extra 2, missing 1. Most letter errors sit in words that fall back to Tesseract, which is the case fine-tuning targets.
+  - `/code-review` fixes:
+    - placeholder-only words stay `unlabelled`;
+    - letters exclude the Telugu fraction and number signs;
+    - a separate `Errors` type for letter errors;
+    - version 0.25.0.
+
+    Left: misses show letter tokens (punctuation is out of scope by design); Python edit distance (gold pages only); multi-gap order in `gaps.tsv` (spaces separate the stretches in `□` order).
+  - `pytest`: 324 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 
