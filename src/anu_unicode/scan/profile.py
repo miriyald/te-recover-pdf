@@ -31,15 +31,19 @@ class ScanProfile:
     shape_unit: HeightUnit = HeightUnit.MEDIAN
 
 
-CHOICES = {"grouping_unit": HeightUnit, "shape_unit": HeightUnit}
+UNITS = {"grouping_unit", "shape_unit"}
 GROUPING = {field.name for field in fields(Grouping)}
+SETTINGS = GROUPING | {"shape_unit"}
 
 
 def load_scan_profile(path: Path) -> ScanProfile:
     if not path.exists():
         return ScanProfile()
-    settings: dict[str, Any] = {name: CHOICES[name](value) if name in CHOICES else float(value)
-                                for name, value in json.loads(path.read_text(encoding="utf-8")).items()}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    unknown = sorted(set(raw) - SETTINGS)
+    if unknown:
+        raise ValueError(f"{path}: unknown settings: {', '.join(unknown)}; a profile is flat, with keys {', '.join(sorted(SETTINGS))}")
+    settings: dict[str, Any] = {name: HeightUnit(value) if name in UNITS else float(value) for name, value in raw.items()}
     grouping = Grouping(**{name: value for name, value in settings.items() if name in GROUPING})
     return ScanProfile(grouping, **{name: value for name, value in settings.items() if name not in GROUPING})
 

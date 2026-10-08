@@ -40,9 +40,9 @@ def test_a_badly_typed_number_fails_when_the_profile_is_loaded(tmp_path: Path) -
 
 
 def test_an_unknown_profile_setting_is_rejected(tmp_path: Path) -> None:
-    (tmp_path / "profile.json").write_text(json.dumps({"wordgap": 0.38}), encoding="utf-8")
+    (tmp_path / "profile.json").write_text(json.dumps({"wordgap": 0.38, "grouping": {"word_gap": 0.85}}), encoding="utf-8")
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError, match="unknown settings: grouping, wordgap"):
         load_scan_profile(tmp_path / "profile.json")
 
 

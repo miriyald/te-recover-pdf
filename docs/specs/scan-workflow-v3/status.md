@@ -123,6 +123,7 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
     - Training data is unaffected, since `tesstrain` trains on line and phrase images.
     - Label coverage is the cost: 17–20% on 3 pages against 33% at 0.38, because inference solves only 1–2 unknowns per unit. Re-measure at Gate 1. If coverage stays low, widen inference (more unknowns per unit), not grouping.
 - `ScanProfile` was split into `Grouping` (the grouping unit and thresholds) plus `shape_unit`, to satisfy lint. JSON profiles stay flat.
+  - `/code-review` fixes: profile keys are checked against the known flat names, with an error that lists them; unit conversion is back to a simple set; a test constant was renamed. Left: field names as the JSON contract (now validated); the split kept rather than an inline lint disable; JIRA (skipped by the user).
 
 ## In progress
 - None.
