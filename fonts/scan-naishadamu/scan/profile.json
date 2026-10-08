@@ -9,5 +9,6 @@
   "repair_size": 0.4,
   "repair_gap": 0.08,
   "loose_speck_size": 0.18,
-  "space_gap": 0.6
+  "space_gap": 0.6,
+  "ocr_model": "tel_ns"
 }

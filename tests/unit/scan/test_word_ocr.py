@@ -1,11 +1,12 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
 
 from anu_unicode.scan.index import Occurrence
 from anu_unicode.scan.ink import Bitmap
-from anu_unicode.scan.word_ocr import WordOcr, read_words, word_box, word_image, words_of
+from anu_unicode.scan.word_ocr import WordOcr, ocr_cache_name, read_words, tesseract_word, word_box, word_image, words_of
 from anu_unicode.scan.words import Band
 
 
@@ -56,3 +57,24 @@ def test_words_are_read_once_and_then_come_from_the_cache(tmp_path: Path) -> Non
     assert second == first
     assert len(calls) == 2
     assert rendered == [4]
+
+
+def test_a_word_is_read_with_the_stock_telugu_model_unless_a_book_model_is_given(tmp_path: Path) -> None:
+    image = Image.new("L", (10, 10), 255)
+    with patch("anu_unicode.scan.word_ocr.pytesseract.image_to_string", return_value="కా") as read:
+        tesseract_word(image, "tesseract", None)
+        tesseract_word(image, "tesseract", tmp_path / "ocr" / "tel_ns.traineddata")
+
+    assert [(call.kwargs["lang"], call.kwargs["config"]) for call in read.call_args_list] == [
+        ("tel", "--psm 8"), ("tel_ns", f"--psm 8 --tessdata-dir {(tmp_path / 'ocr').as_posix()}")]
+
+
+def test_each_model_has_its_own_cache_and_a_retrained_model_gets_a_new_one(tmp_path: Path) -> None:
+    model = tmp_path / "tel_ns.traineddata"
+    model.write_bytes(b"first")
+    first = ocr_cache_name(model)
+    model.write_bytes(b"second")
+
+    assert ocr_cache_name(None) == "scan-word-ocr.tsv"
+    assert first.startswith("scan-word-ocr-tel_ns-") and first.endswith(".tsv")
+    assert ocr_cache_name(model) != first

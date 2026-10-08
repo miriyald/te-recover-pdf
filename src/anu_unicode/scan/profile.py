@@ -30,11 +30,18 @@ class ScanProfile:
     grouping: Grouping = Grouping()
     shape_unit: HeightUnit = HeightUnit.MEDIAN
     space_gap: float = 0.0
+    ocr_model: str = ""
 
 
 UNITS = {"grouping_unit", "shape_unit"}
 GROUPING = {field.name for field in fields(Grouping)}
-SETTINGS = GROUPING | {"shape_unit", "space_gap"}
+SETTINGS = GROUPING | {"shape_unit", "space_gap", "ocr_model"}
+
+
+def _setting(name: str, value: Any) -> Any:
+    if name in UNITS:
+        return HeightUnit(value)
+    return str(value) if name == "ocr_model" else float(value)
 
 
 def load_scan_profile(path: Path) -> ScanProfile:
@@ -44,7 +51,7 @@ def load_scan_profile(path: Path) -> ScanProfile:
     unknown = sorted(set(raw) - SETTINGS)
     if unknown:
         raise ValueError(f"{path}: unknown settings: {', '.join(unknown)}; a profile is flat, with keys {', '.join(sorted(SETTINGS))}")
-    settings: dict[str, Any] = {name: HeightUnit(value) if name in UNITS else float(value) for name, value in raw.items()}
+    settings: dict[str, Any] = {name: _setting(name, value) for name, value in raw.items()}
     grouping = Grouping(**{name: value for name, value in settings.items() if name in GROUPING})
     return ScanProfile(grouping, **{name: value for name, value in settings.items() if name not in GROUPING})
 

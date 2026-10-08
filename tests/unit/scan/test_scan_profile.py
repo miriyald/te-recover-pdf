@@ -32,6 +32,12 @@ def test_numbers_and_units_are_converted_when_the_profile_is_loaded(tmp_path: Pa
     assert (profile.grouping.word_gap, profile.shape_unit) == (0.85, HeightUnit.LETTER)
 
 
+def test_a_book_ocr_model_is_named_not_located(tmp_path: Path) -> None:
+    (tmp_path / "profile.json").write_text(json.dumps({"ocr_model": "tel_ns"}), encoding="utf-8")
+
+    assert load_scan_profile(tmp_path / "profile.json").ocr_model == "tel_ns"
+
+
 def test_a_badly_typed_number_fails_when_the_profile_is_loaded(tmp_path: Path) -> None:
     (tmp_path / "profile.json").write_text(json.dumps({"word_gap": "wide"}), encoding="utf-8")
 

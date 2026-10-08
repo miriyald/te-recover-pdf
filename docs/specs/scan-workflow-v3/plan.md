@@ -17,9 +17,9 @@ Stages 1–5 of `design.md`, built and measured in order. Each stage ends with a
 - [x] **2.** Per-book OCR fix table (`ocr-fixes.tsv`) feeding inference and conversion. Trust from support alone was tried and removed (see status). The confusion table also covers the recheck, since rechecks read the fixed text.
 - [x] **3.** Review ranking by words completed (greedy). Recipe drafts are deferred to after Gate 2, when symbolic names exist.
 - [ ] **Gate 2.** The user does one review round; measure.
-- [ ] **4a.** `scan-train-ocr`: export confirmed word crops and their text (`.png` plus `.gt.txt`), held out from gold.
-- [ ] **4b.** Fine-tune `tel_best` with `lstmtraining` (CPU), then plug the model in through `--ocr-model`.
-- [ ] **Gate 3.** Score model n+1 against model n on gold, and keep it only if it is better.
+- [x] **4a.** (round 1 via throwaway scripts; command still to build) `scan-train-ocr`: export confirmed word crops and their text (`.png` plus `.gt.txt`), held out from gold.
+- [x] **4b.** Fine-tune `tel_best` with `lstmtraining` (CPU), then plug the model in through `--ocr-model`.
+- [x] **Gate 3.** Round 1: 8.7% → 7.5% letter error rate on gold. Score model n+1 against model n on gold, and keep it only if it is better.
 - [ ] **4c.** Optional: a GPU PyTorch recognizer, if the Tesseract model plateaus.
 
 ## Risks & mitigations

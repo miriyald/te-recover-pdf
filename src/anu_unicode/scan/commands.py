@@ -33,13 +33,12 @@ from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
 from anu_unicode.scan.split import MIXED, Division, Mixed, divide, find_mixed, readings, subclusters
-from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, word_box, word_image, words_of
+from anu_unicode.scan.word_ocr import WordKey, WordOcr, ocr_cache_name, read_words, tesseract_word, word_box, word_image, words_of
 from anu_unicode.shape_naming.shapes import load_recipes
 
 logger = logging.getLogger(__name__)
 SCAN = "[scanned books]"
 ASSIGNMENTS = "scan-occurrences.tsv"
-WORD_OCR = "scan-word-ocr.tsv"
 GLYPH_OCR = "scan-glyph-ocr.tsv"
 LABELS = "scan-labels.tsv"
 GOLD_FILE = re.compile(r"page-(\d+)\.txt")
@@ -118,8 +117,19 @@ def _renderer(arguments: argparse.Namespace) -> Callable[[int], Bitmap]:
 
 
 def _raw_texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
-    ocr = WordOcr(lambda image: tesseract_word(image, arguments.tesseract), arguments.layout.state / WORD_OCR)
-    return read_words(words, ink, ocr)
+    model = _ocr_model(arguments)
+    stored = arguments.layout.state / ocr_cache_name(model)
+    return read_words(words, ink, WordOcr(lambda image: tesseract_word(image, arguments.tesseract, model), stored))
+
+
+def _ocr_model(arguments: argparse.Namespace) -> Path | None:
+    name = load_scan_profile(arguments.scan_profile).ocr_model
+    if not name:
+        return None
+    model: Path = arguments.layout.state / "ocr" / f"{name}.traineddata"
+    if not model.is_file():
+        raise FileNotFoundError(f"the scan profile names OCR model {name!r}, but {model} does not exist")
+    return model
 
 
 def _fixed(arguments: argparse.Namespace, texts: dict[WordKey, str]) -> dict[WordKey, str]:

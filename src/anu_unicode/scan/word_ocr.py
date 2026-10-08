@@ -1,3 +1,4 @@
+import hashlib
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,7 @@ from anu_unicode.scan.ink import Bitmap, Box
 WORD_PADDING = 10
 OCR_BORDER = 20
 OCR_WORKERS = 8
+CACHE = "scan-word-ocr.tsv"
 
 WordKey = tuple[int, int, int]
 CacheKey = tuple[int, Box]
@@ -45,9 +47,16 @@ def word_image(ink: Bitmap, box: Box) -> Image.Image:
     return ImageOps.expand(crop, border=OCR_BORDER, fill=255)
 
 
-def tesseract_word(image: Image.Image, tesseract_cmd: str) -> str:
+def ocr_cache_name(model: Path | None) -> str:
+    if model is None:
+        return CACHE
+    return f"scan-word-ocr-{model.stem}-{hashlib.md5(model.read_bytes()).hexdigest()[:8]}.tsv"
+
+
+def tesseract_word(image: Image.Image, tesseract_cmd: str, model: Path | None) -> str:
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-    return str(pytesseract.image_to_string(image, lang="tel", config="--psm 8"))
+    lang, config = ("tel", "--psm 8") if model is None else (model.stem, f"--psm 8 --tessdata-dir {model.parent.as_posix()}")
+    return str(pytesseract.image_to_string(image, lang=lang, config=config))
 
 
 def _load(path: Path) -> dict[CacheKey, str]:

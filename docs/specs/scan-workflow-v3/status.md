@@ -233,6 +233,25 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
     Left: misses show letter tokens (punctuation is out of scope by design); Python edit distance (gold pages only); multi-gap order in `gaps.tsv` (spaces separate the stretches in `□` order).
   - `pytest`: 324 passed. `lint.cmd`: OK.
 
+- **Step 4: fine-tuned OCR, round 1 (2026-10-09).**
+  - **Correction:** the installed `tel.traineddata` already is the float `tessdata_best` model (identical checksum to the GitHub file), so it can be fine-tuned. The design's claim that it was the compressed model was wrong. Its character set has multi-character entries (`్గ`, `్త`, `్ర`, …) but no ఁ or ఱ.
+  - **Training data** (throwaway `docs/temp/scan-naishadamu/export_training.py`): units on pages 195–214 minus the gold pages, where our reading was AGREED or REVIEWED (never a fallback or a `□`). Each is the same crop Tesseract reads, with our reading (spaces included) as its text.
+    - 518 lines were exported; 3 were skipped because they contain ఁ or ఱ (checked by longest-match encoding over the model's entries).
+    - Split 467 train, 51 eval.
+  - **Training:** `lstmtraining --continue_from tel.lstm`, 3,000 iterations on CPU. Best checkpoint at 0.88% character error on training lines.
+  - **Held-out gold, the model reading the crops alone:** stock `tel` 253/370 letter words, 8.7% letter error rate; **`tel_ns` 264/370 (71.4%), 7.5%**.
+  - **Pipeline with `tel_ns`:**
+    - labelled ids 749 → **877** (coverage 70.5% → **73.7%**), complete units 715 → 827, rechecks 13 → 6;
+    - gold letter words **264/370**, letter error rate **7.5%** (ours = model alone);
+    - strict words 332/483.
+    - Letter misses: unlabelled 52, grouping 18, ocr overruled 2, extra 2, wrong label 3.
+  - **Code:**
+    - profile `ocr_model` names a model, resolved to `files/<book>/state/ocr/<name>.traineddata` (the 9 MB file stays out of git), with a clear error if it is missing;
+    - word OCR gets its own cache per model, keyed by a content hash (`scan-word-ocr-<name>-<hash>.tsv`), so a retrained model never reuses stale readings.
+    - `/code-review` fixes: model named rather than pathed (anchored per book, checked up front); hash-keyed cache; a single Tesseract call; a cache-name test. Left: paths with spaces (book state has none, and quoting breaks on Windows); glyph OCR stays on stock `tel` (it only seeds labels); profile loaded more than once (cheap).
+  - **Not yet built:** `scan-train-ocr` as a command. The export and training ran as throwaway scripts, which is the next step if round 2 is wanted.
+  - `pytest`: 327 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 
