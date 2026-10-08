@@ -15,7 +15,7 @@ Stages 1–5 of `design.md`, built and measured in order. Each stage ends with a
 - [x] **1e.** Tune Naishadamu's `word_gap` on gold pages 197 and 209, and check it on 201. Done: 0.85 (see status). A per-page adaptive gap is not needed for now.
 - [x] **Gate 1.** Fresh index of 20 consecutive Naishadamu pages and the gold pages. Report grouping errors on gold, one-off ids, coverage and gold accuracy, then stop.
 - [x] **2.** Per-book OCR fix table (`ocr-fixes.tsv`) feeding inference and conversion. Trust from support alone was tried and removed (see status). The confusion table also covers the recheck, since rechecks read the fixed text.
-- [ ] **3.** Review ranking by words completed, and recipe drafts with evidence on the sheet.
+- [x] **3.** Review ranking by words completed (greedy). Recipe drafts are deferred to after Gate 2, when symbolic names exist.
 - [ ] **Gate 2.** The user does one review round; measure.
 - [ ] **4a.** `scan-train-ocr`: export confirmed word crops and their text (`.png` plus `.gt.txt`), held out from gold.
 - [ ] **4b.** Fine-tune `tel_best` with `lstmtraining` (CPU), then plug the model in through `--ocr-model`.

@@ -156,6 +156,20 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
     - Left: the fixes reaching inference (that is their purpose); the raw baseline (by design); the unreachable empty word; BOM handling (shared mapping convention).
   - `pytest`: 313 passed. `lint.cmd`: OK.
 
+- **Step 3: review ranked by words completed (2026-10-09).**
+  - **Evidence** (Gate 1 state, 1,770 units, 214 already readable): units made fully readable by deciding the top N shapes.
+
+    | Decisions | Old ranking (flagged, then count) | Static words-completed | **Greedy, recounted after each pick** |
+    |---|---|---|---|
+    | 50 | 403 | 417 | **444** (+10%) |
+    | 100 | 465 | 488 | **547** (+18%) |
+
+  - `review_rows`: shapes without a confident label come first, ordered greedily by the words each decision completes, counted over the whole book and recounted after every pick. Picks come only from the sheet's pages. Confident undecided shapes follow by count. Ties keep the old order, flagged then count. Each row shows `+N with rows above`.
+  - Real sheet: the top 50 rows add **230 readable units**, matching the simulation. It builds in 3 s.
+  - **Deferred:** recipe drafts with evidence on the sheet. They need symbolic names from reviewed decisions, so they come after Gate 2.
+  - `/code-review` fixes: the cumulative label (`+N with rows above`); single-meaning variables; a full-order test; version 0.23.0. Left: speed (fine at 20 pages); book-wide gains on page-limited sheets (a decision applies book-wide); confident undecided shapes counted as settled (matches what conversion reads).
+  - `pytest`: 316 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 
@@ -163,4 +177,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- The user confirms the draft `ocr-fixes.tsv`. Then step 3: review ranking by words completed, with recipe drafts and evidence on the sheet.
+- **Gate 2:** the user reviews `files/sriharsha-naishadamu/output/intermediate/scan-review/review.html` (50 rows) and saves `decisions.tsv` (and any `recipes.tsv`) to `fonts/scan-naishadamu/scan/`; then re-label and measure on gold.

@@ -1,7 +1,7 @@
 import html
 import json
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,6 +51,7 @@ class ReviewRow:
     label: Label | None
     flagged: bool
     examples: tuple[Example, ...]
+    completes: int = 0
 
 
 @dataclass(frozen=True)
@@ -86,15 +87,38 @@ def _examples(source: ReviewInput, wanted: set[int]) -> dict[int, list[Example]]
     return examples
 
 
+def _greedy(pickable: set[int], open_ids: set[int], words: list[set[int]], order: Callable[[int], tuple[bool, int, int]],
+            top: int) -> list[tuple[int, int]]:
+    remaining = [word & open_ids for word in words]
+    chosen: list[tuple[int, int]] = []
+    left = set(pickable)
+    while left and len(chosen) < top:
+        gains = Counter(next(iter(missing)) for missing in remaining if len(missing) == 1)
+        pick = min(left, key=lambda shape_id: (-gains[shape_id], *order(shape_id)))
+        chosen.append((pick, gains[pick]))
+        left.discard(pick)
+        remaining = [missing - {pick} for missing in remaining]
+    return chosen
+
+
 def review_rows(source: ReviewInput, top: int) -> list[ReviewRow]:
     counts = Counter(item.shape_id for item in source.occurrences if item.shape_id != EQUALS)
     on_pages = {item.shape_id for item in source.occurrences if item.shape_id != EQUALS and (not source.pages or item.page in source.pages)}
-    candidates = [shape_id for shape_id in on_pages if shape_id not in source.decisions]
-    ranked = sorted(candidates, key=lambda shape_id: (not _flagged(shape_id, source.labels.get(shape_id), source.marks),
-                                                      -counts[shape_id], shape_id))[:top]
-    examples = _examples(source, set(ranked))
-    return [ReviewRow(shape_id, counts[shape_id], source.labels.get(shape_id),
-                      _flagged(shape_id, source.labels.get(shape_id), source.marks), tuple(examples[shape_id])) for shape_id in ranked]
+    candidates = {shape_id for shape_id in on_pages if shape_id not in source.decisions}
+
+    def flagged(shape_id: int) -> bool:
+        return _flagged(shape_id, source.labels.get(shape_id), source.marks)
+
+    def order(shape_id: int) -> tuple[bool, int, int]:
+        return not flagged(shape_id), -counts[shape_id], shape_id
+
+    unsettled = {shape_id for shape_id in counts if shape_id not in source.decisions and flagged(shape_id)}
+    words = [{item.shape_id for item in items if item.shape_id != EQUALS} for items in words_of(source.occurrences).values()]
+    picks = _greedy(candidates & unsettled, unsettled, words, order, top)
+    ranked = (picks + [(shape_id, 0) for shape_id in sorted(candidates - unsettled, key=order)])[:top]
+    examples = _examples(source, {shape_id for shape_id, _ in ranked})
+    return [ReviewRow(shape_id, counts[shape_id], source.labels.get(shape_id), flagged(shape_id), tuple(examples[shape_id]), gain)
+            for shape_id, gain in ranked]
 
 
 def _words(examples: Sequence[Example]) -> str:
@@ -106,7 +130,8 @@ def _row(row: ReviewRow, strips: str) -> str:
     value = html.escape(label.name if label else "", quote=True)
     evidence = f"{label.source} · {label.support} words · {label.agreement:.0%}" if label else "unlabelled"
     flag = " class=flag" if row.flagged else ""
-    return (f"<tr data-id={row.shape_id}{flag}><td>#{row.shape_id}</td><td>{row.count}</td>"
+    completes = f" · +{row.completes} with rows above" if row.completes else ""
+    return (f"<tr data-id={row.shape_id}{flag}><td>#{row.shape_id}</td><td>{row.count}{completes}</td>"
             f"<td><img class=strip src='{strips}/{row.shape_id}.png'></td><td><input value=\"{value}\"></td>"
             f"<td>{evidence}</td><td class=p>{_words(row.examples)}</td></tr>")
 
