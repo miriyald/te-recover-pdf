@@ -6,6 +6,7 @@ from PIL import Image
 
 from anu_unicode.scan.ink import Component, letter_height, median_height
 from anu_unicode.scan.page import scan_page, text_components
+from anu_unicode.scan.profile import ScanProfile
 
 BODY = 50.0
 PAGE_HEIGHT = 1000
@@ -29,9 +30,9 @@ def test_a_blank_scanned_page_has_no_lines_and_no_heights() -> None:
     document = pymupdf.open()
     document.new_page(width=200, height=300).insert_image(pymupdf.Rect(0, 0, 200, 300), stream=white.getvalue())
 
-    page = scan_page(document[0], 1)
+    page = scan_page(document[0], 1, ScanProfile())
 
-    assert (page.body_height, page.letter_height, page.lines) == (0.0, 0.0, [])
+    assert (page.body_height, page.lines) == (0.0, [])
 
 
 def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> None:
@@ -39,7 +40,7 @@ def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> Non
     foot_rule, page_number = _block(0, 930, 900, 10), _block(400, 945, 30, 40)
     body = _block(0, 400, 40, 50)
 
-    kept = text_components([head_rule, head_text, body, foot_rule, page_number], BODY, PAGE_HEIGHT)
+    kept = text_components([head_rule, head_text, body, foot_rule, page_number], BODY, PAGE_HEIGHT, ScanProfile())
 
     assert kept == [body]
 
@@ -47,7 +48,7 @@ def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> Non
 def test_a_speck_enclosed_by_a_letter_is_noise_but_a_free_speck_is_kept() -> None:
     letter, enclosed, free = _block(100, 400, 40, 50), _block(110, 410, 5, 5), _block(300, 400, 5, 5)
 
-    kept = text_components([letter, enclosed, free], BODY, PAGE_HEIGHT)
+    kept = text_components([letter, enclosed, free], BODY, PAGE_HEIGHT, ScanProfile())
 
     assert kept == [letter, free]
 
@@ -57,7 +58,7 @@ def test_a_dot_inside_a_letters_hole_becomes_part_of_the_letter() -> None:
     mask[8:-8, 8:-8] = False
     ring, dot = Component((100, 400, 140, 450), mask), _block(117, 422, 6, 6)
 
-    kept = text_components([ring, dot], BODY, PAGE_HEIGHT)
+    kept = text_components([ring, dot], BODY, PAGE_HEIGHT, ScanProfile())
 
     assert len(kept) == 1
     assert kept[0].bbox == ring.bbox
@@ -68,6 +69,6 @@ def test_a_glyph_whose_subscript_reaches_past_the_foot_rule_is_kept() -> None:
     foot_rule, page_number = _block(0, 930, 900, 10), _block(400, 945, 30, 40)
     last_line = _block(0, 890, 40, 60)
 
-    kept = text_components([foot_rule, page_number, last_line], BODY, PAGE_HEIGHT)
+    kept = text_components([foot_rule, page_number, last_line], BODY, PAGE_HEIGHT, ScanProfile())
 
     assert kept == [last_line]

@@ -4,12 +4,12 @@ from enum import StrEnum
 import numpy as np
 
 from anu_unicode.scan.ink import Box, Component
+from anu_unicode.scan.profile import ScanProfile
 
 MIN_OVERLAP = 0.3
 MAIN_OVERLAP = 0.5
 RESTING_OVERLAP = 0.5
 RESTING_DEPTH = 0.25
-BAR_HEIGHT = 0.3
 BAR_ASPECT = 2.5
 EQUALS_ALIGNMENT = 0.8
 MAJORITY_DEPTH = 3
@@ -31,6 +31,7 @@ class Placed:
 class ScanWord:
     glyphs: tuple[Placed, ...]
     band: tuple[int, int]
+    equals: bool = False
 
     @property
     def bbox(self) -> Box:
@@ -38,12 +39,8 @@ class ScanWord:
         return min(box[0] for box in boxes), min(box[1] for box in boxes), max(box[2] for box in boxes), max(box[3] for box in boxes)
 
 
-def _is_bar(component: Component, letter: float) -> bool:
-    return component.height < BAR_HEIGHT * letter and component.width > BAR_ASPECT * component.height
-
-
-def is_equals(word: ScanWord, letter: float) -> bool:
-    return len(word.glyphs) >= 2 and all(_is_bar(placed.component, letter) for placed in word.glyphs)
+def _is_bar(component: Component, max_height: float) -> bool:
+    return component.height < max_height and component.width > BAR_ASPECT * component.height
 
 
 def _overlap(first: tuple[int, int], second: tuple[int, int]) -> int:
@@ -68,8 +65,8 @@ def _equals_pair(first: Component, second: Component, stack_gap: float) -> bool:
     return shared >= EQUALS_ALIGNMENT * max(first.width, second.width) and _stacked(first, second, stack_gap)
 
 
-def _stacked_bars(components: list[Component], letter: float, stack_gap: float) -> list[Component]:
-    bars = [component for component in components if _is_bar(component, letter)]
+def _stacked_bars(components: list[Component], max_height: float, stack_gap: float) -> list[Component]:
+    bars = [component for component in components if _is_bar(component, max_height)]
     return [stroke for stroke in bars if any(other is not stroke and _equals_pair(stroke, other, stack_gap) for other in bars)]
 
 
@@ -146,14 +143,18 @@ def _drawing_order(placed: list[Placed]) -> tuple[Placed, ...]:
     return tuple(item for host, own in zip(hosts, attached) for item in (host, *own))
 
 
-def page_words(components: list[Component], letter: float, word_gap: float, stack_gap: float) -> list[list[ScanWord]]:
-    equals = _stacked_bars(components, letter, stack_gap * letter)
+def _word(group: list[Component], equals: bool) -> ScanWord:
+    band = _band(group)
+    return ScanWord(_drawing_order([Placed(component, _classify(component, band)) for component in group]), band, equals)
+
+
+def page_words(components: list[Component], height: float, profile: ScanProfile) -> list[list[ScanWord]]:
+    stack_gap = profile.stack_gap * height
+    equals = _stacked_bars(components, profile.bar_height * height, stack_gap)
     in_equals = {id(stroke) for stroke in equals}
     letters = [component for component in components if id(component) not in in_equals]
-    words = []
-    for group in _groups(letters, word_gap * letter, stack_gap * letter) + _groups(equals, 0, stack_gap * letter):
-        band = _band(group)
-        words.append(ScanWord(_drawing_order([Placed(component, _classify(component, band)) for component in group]), band))
+    words = [_word(group, False) for group in _groups(letters, profile.word_gap * height, stack_gap)]
+    words += [_word(group, True) for group in _groups(equals, 0, stack_gap)]
     return _lines(words)
 
 

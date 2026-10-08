@@ -24,9 +24,10 @@ from anu_unicode.scan.evaluation import Miss, score_page, write_misses, write_sc
 from anu_unicode.scan.glyph_ocr import GlyphOcr, largest_component, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
-from anu_unicode.scan.ink import Bitmap, Component, find_components, median_height, render_ink
+from anu_unicode.scan.ink import Bitmap, Component, find_components, render_ink
 from anu_unicode.scan.names import Speller, is_symbolic, validate_recipes
 from anu_unicode.scan.page import MIN_AREA, ScanPage, scan_page
+from anu_unicode.scan.profile import ScanProfile, load_scan_profile, unit_height
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
@@ -44,10 +45,30 @@ GOLD_FILE = re.compile(r"page-(\d+)\.txt")
 CROP_SIZE = (900, 140)
 
 
-def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
+class CatalogUnitError(ValueError):
+    pass
+
+
+def existing_file(value: str) -> Path:
+    path = Path(value)
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(f"no such file: {path}")
+    return path
+
+
+def checked_catalog(path: Path, profile: ScanProfile) -> ShapeCatalog:
+    catalog = load_catalog(path)
+    if catalog.shape_unit != profile.shape_unit:
+        raise CatalogUnitError(f"{path} holds shapes scaled by {catalog.shape_unit} height but the profile says {profile.shape_unit};"
+                               " run scan-index with --rebuild")
+    return catalog
+
+
+def _catalog(arguments: argparse.Namespace, profile: ScanProfile) -> ShapeCatalog:
     if arguments.catalog.exists() and not arguments.rebuild:
-        return load_catalog(arguments.catalog)
-    return ShapeCatalog(Thresholds(arguments.max_stray, arguments.max_height_drift, arguments.max_aspect_drift))
+        return checked_catalog(arguments.catalog, profile)
+    thresholds = Thresholds(arguments.max_stray, arguments.max_height_drift, arguments.max_aspect_drift)
+    return ShapeCatalog(thresholds, shape_unit=profile.shape_unit)
 
 
 def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: list[ScanPage]) -> None:
@@ -62,10 +83,11 @@ def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: l
 
 def _scan_index(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
-    pages = [scan_page(document[number - 1], number) for number in requested_pages(arguments, document)]
+    profile = load_scan_profile(arguments.scan_profile)
+    pages = [scan_page(document[number - 1], number, profile) for number in requested_pages(arguments, document)]
     assigned = arguments.layout.state / ASSIGNMENTS
     previous = previous_assignments(read_occurrences(assigned)) if not arguments.rebuild else {}
-    index = ShapeIndex(_catalog(arguments), previous)
+    index = ShapeIndex(_catalog(arguments, profile), previous)
     for page in pages:
         index.add(page)
     out = arguments.layout.intermediate("scan-index")
@@ -158,10 +180,11 @@ def _scan_review(arguments: argparse.Namespace) -> None:
 
 def _member_shapes(arguments: argparse.Namespace, items: list[Occurrence]) -> dict[Occurrence, Shape]:
     document = pymupdf.open(arguments.pdf)
+    shape_unit = load_scan_profile(arguments.scan_profile).shape_unit
     shapes: dict[Occurrence, Shape] = {}
     for page, on_page in groupby(sorted(items, key=lambda item: item.page), key=lambda item: item.page):
         ink = render_ink(document[page - 1])
-        body_height = median_height(find_components(ink, MIN_AREA))
+        body_height = unit_height(find_components(ink, MIN_AREA), shape_unit)
         for item in on_page:
             shapes[item] = shape_of(Component(item.bbox, largest_component(ink, item.bbox)), item.band, body_height)
     return shapes
@@ -296,6 +319,7 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     _pages_option(index, "whole PDF")
     index.add_argument("--catalog", type=Path, help="shape catalog to extend; default files/<book>/state/scan-catalog.npz")
     index.add_argument("--rebuild", action="store_true", help="ignore an existing catalog and cluster from scratch")
+    index.add_argument("--scan-profile", type=existing_file, help="grouping units and thresholds; default fonts/<font>/scan/profile.json")
     index.add_argument("--write-catalog", action="store_true", help="save the catalog so later runs keep these shape ids")
     index.add_argument("--max-stray", type=float, default=0.2, help="pre-filter: share of ink further than 1 grid pixel from the prototype")
     index.add_argument("--max-height-drift", type=float, default=0.2, help="abs log height difference, in body heights")

@@ -8,6 +8,7 @@ from PIL import Image
 from scipy import ndimage
 
 from anu_unicode.scan.ink import Bitmap, Component
+from anu_unicode.scan.profile import HeightUnit
 from anu_unicode.scan.words import Band
 
 GRID = 48
@@ -154,6 +155,7 @@ class ShapeCatalog:
     holes: Integers = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     grids: GridPrototypes = field(default_factory=GridPrototypes)
     canvases: CanvasPrototypes = field(default_factory=CanvasPrototypes)
+    shape_unit: HeightUnit = HeightUnit.MEDIAN
 
     def __len__(self) -> int:
         return len(self.counts)
@@ -222,15 +224,18 @@ class ShapeCatalog:
         canvases = np.packbits(np.array(self.canvases.bitmaps).reshape((-1, *CANVAS)), axis=2)
         np.savez_compressed(path, prototypes=np.packbits(self.grids.bitmaps > 0, axis=1), canvases=canvases,
                             heights=self.heights, aspects=self.aspects, bands=self.bands, holes=self.holes,
-                            thresholds=np.array([self.thresholds.distance, self.thresholds.height_drift, self.thresholds.aspect_drift]))
+                            thresholds=np.array([self.thresholds.distance, self.thresholds.height_drift, self.thresholds.aspect_drift]),
+                            shape_unit=np.array(self.shape_unit.value))
 
 
 def load_catalog(path: Path) -> ShapeCatalog:
     names = ("prototypes", "canvases", "heights", "aspects", "bands", "holes", "thresholds")
     with np.load(path) as data:
         arrays = {name: np.array(data[name]) for name in names}
+        shape_unit = HeightUnit(str(data["shape_unit"])) if "shape_unit" in data.files else HeightUnit.MEDIAN
     grids = np.unpackbits(arrays["prototypes"], axis=1)[:, :GRID * GRID].astype(np.float64)
     canvases = list(np.unpackbits(arrays["canvases"], axis=2)[:, :, :CANVAS[1]].astype(bool))
     return ShapeCatalog(Thresholds(*(float(value) for value in arrays["thresholds"].tolist())), frozen=len(grids),
                         counts=np.zeros(len(grids)), heights=arrays["heights"], aspects=arrays["aspects"], bands=arrays["bands"],
-                        holes=arrays["holes"], grids=GridPrototypes.frozen(grids), canvases=CanvasPrototypes.frozen(canvases))
+                        holes=arrays["holes"], grids=GridPrototypes.frozen(grids), canvases=CanvasPrototypes.frozen(canvases),
+                        shape_unit=shape_unit)

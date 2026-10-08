@@ -49,6 +49,38 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - Pre-existing and noted: `_member_shapes` rebuilds shapes without dot merging.
   - `pytest`: 291 passed. `lint.cmd`: OK.
 
+- **Per-book profiles (user direction: not a generic solution).**
+  - `scan/profile.py`; `fonts/<scan-font>/scan/profile.json` is read by `scan-index` (`--scan-profile` overrides it).
+  - The defaults are Prasaaskhara's validated values, so the step-1a rescaling was undone for books without a profile.
+  - `=` words are marked by grouping (`ScanWord.equals`), so `ScanPage` carries a single height again: the shape height.
+  - Prasaaskhara with no profile: page 51 stays at 95/99. Same as Tesseract 19,115 (19,113 post-review), `=` 9,450, ఁ 1,026, ఱ 268, periods 374, other 266. The post-review baseline is reproduced.
+  - Naishadamu profile: letter units for grouping and shapes. Shapes in letter height gave 1,175 ids instead of 1,335, and 818 one-offs instead of 1,006.
+  - **Word-gap sweep** (tuned on 197 + 209, held-out 201):
+
+    | `word_gap` | Tuning (197 + 209) | Held-out 201 | Grouping misses |
+    |---|---|---|---|
+    | 0.38 | 184/313 | 93/170 | 37 |
+    | 0.45 | 184/313 | 93/170 | 36 |
+    | 0.55 | 184/313 | 99/170 | 30 |
+    | 0.65 | 185/313 | 100/170 | 30 |
+    | 0.75 | 190/313 | 103/170 | 28 |
+    | **0.85** | **193/313** | **105/170** | **22** |
+    | 1.0 | 189/313 | 106/170 | 21 |
+    | 1.2 | 190/313 | 108/170 | 22 |
+
+    0.85 was chosen as the tuning-page peak; the held-out page confirms it.
+  - Naishadamu gold now: **298/483 (61.7%)**. Misses: unlabelled 82, grouping 22, wrong label 7, missing 3, extra 2, ocr overruled 1. Grouping is no longer the main cause.
+  - Step 1e (per-page adaptive gap) is not needed for now: one book-level value fixes most splits.
+  - **`/code-review` fixes:**
+    - the catalog saves its `shape_unit`, and `scan-index` refuses a catalog scaled by another unit (older catalogs count as median);
+    - `scan-split` scales shapes by the profile's shape unit;
+    - a `--scan-profile` path given on the command line must exist;
+    - profile numbers are converted when loading;
+    - unit comparison is by value.
+
+    Left: the defaults going back to median is the user's decision, and computing a height twice is trivial.
+  - `pytest`: 301 passed. `lint.cmd`: OK. Version 0.18.0.
+
 ## In progress
 - None.
 

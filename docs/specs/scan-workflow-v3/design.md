@@ -16,11 +16,17 @@ On *Sriharsha Naishadamu* the pipeline reached 63.5% exact words on page 201, ag
 **Goal:** near-perfect text, clearly beyond OCR, with review effort that grows with the number of distinct shapes in a book, not with how good Tesseract is on it.
 
 ## Requirements / constraints
+- **Per book, not generic (user decision, 2026-10-07).** Each scanned book has its own workflow profile and mappings, all in `fonts/<scan-font>/scan/`:
+  - `profile.json`: grouping and shape units, plus the thresholds;
+  - `decisions.tsv` and `recipes.tsv`;
+  - later, its fine-tuned OCR model.
+
+  A book with no profile gets Prasaaskhara's validated values: the median unit, furniture 8.0, speck 0.3, word gap 0.45, stack gap 0.3 and bar 0.35. A change made for one book must leave the others untouched.
 - Python 3.13, the existing scan commands, and per-book state in `files/<book>/`.
 - **Use the GPU when one is available**, otherwise the CPU. This machine has an NVIDIA RTX 4000 Ada laptop GPU (CUDA 13.2 driver) and 22 CPU cores.
 - No cloud OCR services. Improvement comes from fine-tuning on our own confirmed output.
 - Gold pages are only ever used for scoring, never for training or labels.
-- Prasaaskhara page 51 must stay at 95/99 or better.
+- Prasaaskhara page 51 must stay at 95/99 or better whenever shared code changes behaviour under its (default) profile.
 
 ## Proposed approach
 
@@ -43,7 +49,7 @@ flowchart TD
 ```
 
 ### 1. Grouping you can check without OCR
-- **Body height is the letter height,** taken from the upper peak of the piece-height distribution, not the median of all pieces. Gap thresholds are re-expressed in that unit, so Prasaaskhara's pixel thresholds stay where they are.
+- **The height unit is a profile choice:** `median` (all pieces) or `letter` (the median of the pieces at or above the median). It is set separately for grouping and for shape normalisation. Each book's thresholds are tuned on its own gold pages: tuned on two, checked on the held-out third.
 - **Stroke repair.** A small fragment that nearly touches a larger piece above or beside it joins that piece before clustering. This turns the broken ticks and heads (`slash`, `right_top`, `tick`, `*_base`) back into whole letters, and cuts the number of one-off ids.
 - **Specks.** A piece far smaller than a dot with no letter nearby is dropped.
 - **Grouping check sheet.** It lists the doubtful cases (single-piece lines, single-piece words, subscripts with no host, specks) as image strips to confirm or reject. Its decisions feed back into grouping.

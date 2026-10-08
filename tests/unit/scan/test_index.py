@@ -23,8 +23,8 @@ def test_index_records_each_glyph_and_new_shapes_per_page(tmp_path: Path) -> Non
     square = np.ones((50, 50), dtype=bool)
     index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
 
-    index.add(ScanPage(4, 50.0, 50.0, [[_word(square, square)]]))
-    index.add(ScanPage(5, 50.0, 50.0, [[_word(square)]]))
+    index.add(ScanPage(4, 50.0, [[_word(square, square)]]))
+    index.add(ScanPage(5, 50.0, [[_word(square)]]))
     stats = write_index(tmp_path, index)
 
     assert [(item.page, item.position, item.shape_id) for item in index.occurrences] == [(4, 1, 0), (4, 2, 0), (5, 1, 0)]
@@ -38,7 +38,7 @@ def test_strips_from_an_earlier_run_are_removed(tmp_path: Path) -> None:
     (tmp_path / "shapes").mkdir()
     (tmp_path / "shapes" / "999.png").write_bytes(b"stale")
     index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
-    index.add(ScanPage(4, 50.0, 50.0, [[_word(np.ones((50, 50), dtype=bool))]]))
+    index.add(ScanPage(4, 50.0, [[_word(np.ones((50, 50), dtype=bool))]]))
 
     write_index(tmp_path, index)
 
@@ -49,9 +49,9 @@ def test_equals_bars_get_no_catalog_id_and_stay_out_of_the_statistics(tmp_path: 
     index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
     stroke = np.ones((10, 60), dtype=bool)
     top, bottom = Placed(Component((0, 10, 60, 20), stroke), Band.MAIN), Placed(Component((0, 30, 60, 40), stroke), Band.MAIN)
-    equals = ScanWord((top, bottom), (0, 50))
+    equals = ScanWord((top, bottom), (0, 50), equals=True)
 
-    index.add(ScanPage(4, 50.0, 50.0, [[equals, _word(np.ones((50, 50), dtype=bool))]]))
+    index.add(ScanPage(4, 50.0, [[equals, _word(np.ones((50, 50), dtype=bool))]]))
     stats = write_index(tmp_path, index)
 
     assert [item.shape_id for item in index.occurrences] == [EQUALS, EQUALS, 0]
@@ -67,7 +67,7 @@ def test_an_unchanged_component_keeps_its_earlier_id_and_a_changed_one_is_matche
     previous = {(4, (0, 0, 50, 50)): (3, 2500), (4, (60, 0, 110, 50)): (3, 999)}
     index = ShapeIndex(catalog, previous)
 
-    index.add(ScanPage(4, 50.0, 50.0, [[_word(square, square)]]))
+    index.add(ScanPage(4, 50.0, [[_word(square, square)]]))
 
     assert [item.shape_id for item in index.occurrences] == [3, 0]
     assert index.kept == 1
@@ -80,7 +80,7 @@ def test_an_earlier_id_from_another_band_is_not_kept() -> None:
     catalog._add(shape_of(Component((0, 0, 50, 50), square), Band.ABOVE, 50.0))  # pylint: disable=protected-access
     index = ShapeIndex(catalog, {(4, (0, 0, 50, 50)): (0, 2500)})
 
-    index.add(ScanPage(4, 50.0, 50.0, [[_word(square)]]))
+    index.add(ScanPage(4, 50.0, [[_word(square)]]))
 
     assert [item.shape_id for item in index.occurrences] == [1]
     assert index.kept == 0

@@ -4,6 +4,7 @@ import numpy as np
 
 from anu_unicode.scan.catalog import CANVAS, ShapeCatalog, Thresholds, count_holes, load_catalog, shape_of, thick_difference
 from anu_unicode.scan.ink import Component
+from anu_unicode.scan.profile import HeightUnit
 from anu_unicode.scan.words import Band
 
 BODY = 50.0
@@ -123,3 +124,21 @@ def test_shapes_split_off_an_id_become_a_new_id_after_the_frozen_ones(tmp_path: 
 
     assert new_id == 1
     assert frozen.match(shape_of(_component(_ring()), Band.MAIN, 50.0)) == 1
+
+
+def test_a_saved_catalog_remembers_the_height_unit_its_shapes_were_scaled_by(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(THRESHOLDS, shape_unit=HeightUnit.LETTER)
+    catalog.assign(shape_of(_component(_ring()), Band.MAIN, BODY))
+    catalog.save(tmp_path / "catalog.npz")
+
+    assert load_catalog(tmp_path / "catalog.npz").shape_unit == HeightUnit.LETTER
+
+
+def test_a_catalog_saved_before_units_were_recorded_is_median_scaled(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(THRESHOLDS)
+    catalog.assign(shape_of(_component(_ring()), Band.MAIN, BODY))
+    catalog.save(tmp_path / "catalog.npz")
+    with np.load(tmp_path / "catalog.npz") as data:
+        np.savez(tmp_path / "old.npz", **{name: data[name] for name in data.files if name != "shape_unit"})
+
+    assert load_catalog(tmp_path / "old.npz").shape_unit == HeightUnit.MEDIAN
