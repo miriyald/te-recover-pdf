@@ -50,7 +50,7 @@ def resolve_paths(arguments: argparse.Namespace) -> None:
     defaults = {
         "profile": font / "profile.json", "mapping": font / OCR_LEARNING / "mapping.tsv",
         "decisions": font / "scan" / "decisions.tsv", "scan_recipes": font / "scan" / "recipes.tsv",
-        "scan_profile": font / "scan" / "profile.json",
+        "scan_profile": font / "scan" / "profile.json", "ocr_fixes": font / "scan" / "ocr-fixes.tsv",
         "names": shape_naming_dir / "names.tsv", "recipes": shape_naming_dir / "recipes.tsv", "candidate": shape_naming_dir / "mapping.tsv",
     }
     if arguments.book:

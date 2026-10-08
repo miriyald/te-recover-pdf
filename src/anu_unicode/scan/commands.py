@@ -26,6 +26,7 @@ from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments,
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
 from anu_unicode.scan.ink import Bitmap, Component, find_components, render_ink
 from anu_unicode.scan.names import Speller, is_symbolic, validate_recipes
+from anu_unicode.scan.ocr_fixes import fix_text, load_fixes
 from anu_unicode.scan.page import MIN_AREA, ScanPage, scan_page
 from anu_unicode.scan.profile import ScanProfile, load_scan_profile, unit_height
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
@@ -116,9 +117,18 @@ def _renderer(arguments: argparse.Namespace) -> Callable[[int], Bitmap]:
     return page_ink
 
 
-def _texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
+def _raw_texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
     ocr = WordOcr(lambda image: tesseract_word(image, arguments.tesseract), arguments.layout.state / WORD_OCR)
     return read_words(words, ink, ocr)
+
+
+def _fixed(arguments: argparse.Namespace, texts: dict[WordKey, str]) -> dict[WordKey, str]:
+    fixes = load_fixes(arguments.ocr_fixes)
+    return {key: fix_text(text, fixes) for key, text in texts.items()} if fixes else texts
+
+
+def _texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
+    return _fixed(arguments, _raw_texts(arguments, words, ink))
 
 
 def _speller(arguments: argparse.Namespace, decisions: dict[int, str]) -> Speller:
@@ -227,6 +237,7 @@ def _scan_split(arguments: argparse.Namespace) -> None:
 @dataclass(frozen=True)
 class Conversion:
     words: dict[WordKey, list[Occurrence]]
+    raw_texts: dict[WordKey, str]
     texts: dict[WordKey, str]
     ink: Callable[[int], Bitmap]
     pages: list[tuple[int, dict[WordKey, list[Occurrence]], ScanText]]
@@ -235,14 +246,15 @@ class Conversion:
 def _conversion(arguments: argparse.Namespace, pages: list[int] | None) -> Conversion:
     words = words_of(_occurrences(arguments, pages))
     ink = _renderer(arguments)
-    texts = _texts(arguments, words, ink)
+    raw_texts = _raw_texts(arguments, words, ink)
+    texts = _fixed(arguments, raw_texts)
     labels = read_labels(arguments.layout.state / LABELS)
     speller = _speller(arguments, read_decisions(arguments.decisions))
     converted = []
     for number in sorted({key[0] for key in words}):
         page_words = {key: items for key, items in words.items() if key[0] == number}
         converted.append((number, page_words, convert_scan_page(page_words, labels, texts, speller)))
-    return Conversion(words, texts, ink, converted)
+    return Conversion(words, raw_texts, texts, ink, converted)
 
 
 def _scan_convert(arguments: argparse.Namespace) -> None:
@@ -290,7 +302,7 @@ def _ocr_alone(words: dict[WordKey, list[Occurrence]], texts: dict[WordKey, str]
 def _scan_evaluate(arguments: argparse.Namespace) -> None:
     golds: dict[int, str] = arguments.gold
     conversion = _conversion(arguments, sorted(golds))
-    scores = [score_page(number, golds[number], converted, _ocr_alone(page_words, conversion.texts), conversion.texts)
+    scores = [score_page(number, golds[number], converted, _ocr_alone(page_words, conversion.raw_texts), conversion.raw_texts)
               for number, page_words, converted in conversion.pages]
     out = arguments.layout.intermediate("scan-evaluate")
     write_scores(out / "scores.tsv", scores)
@@ -312,6 +324,7 @@ def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
 def _decisions_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--decisions", type=Path, help="reviewed shape names; default fonts/<font>/scan/decisions.tsv")
     parser.add_argument("--recipes", dest="scan_recipes", type=Path, help="name sequences to text; default fonts/<font>/scan/recipes.tsv")
+    parser.add_argument("--ocr-fixes", type=Path, help="whole-token OCR fixes; default fonts/<font>/scan/ocr-fixes.tsv")
 
 
 def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:

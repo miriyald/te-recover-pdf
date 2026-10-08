@@ -142,6 +142,20 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - Run time: 6 min 54 s for 20 pages.
   - **Reading:** coverage recovers with recurrence, as predicted, so grouping on phrases is fine. Gold doesn't move yet, because our complete readings still lose to Tesseract: 10 overruled. That is exactly what step 2 (trust from shape evidence) targets.
 
+- **Step 2: OCR fixes and trust (2026-10-08).**
+  - **Trust from shape evidence (`trust_support`): tried and removed.** On the Gate 1 state the tuning pages were best with it off: 193 at 0, against 188–189 at 2–5. Every setting raised wrong labels.
+    - Cause: learned labels are not independent evidence. Tesseract's systematic misreading made the danda shape learn the label `1` (support 3–7), so trusting support wrote `1తవ1` where Tesseract alone had `। తవ`.
+  - **Per-book OCR fix table** `fonts/<font>/scan/ocr-fixes.tsv` (`ocr`, `text`; whole tokens only; applied after cleaning, so `193` is untouched). It feeds inference, review, split and conversion. The `scan-evaluate` OCR-alone baseline stays raw.
+    - **Evidence** from aligning raw OCR with gold: `1` → `।` (8 of 9), `|` → `।` (3 of 3), `2` → `:` (2 of 2). On 20 pages Tesseract wrote 67 standalone `1`, 34 `|` and 35 `2` tokens. `॥` → `।` was seen twice but left out, because `॥` is often correct.
+    - The Naishadamu table is a **draft** for the user to confirm.
+    - **Result** (Gate 1 state, no review): **319/483 (66.0%) against 298 for OCR alone**, the first time ours beats OCR on a fresh start. Tuning 193 → 205, held-out 201 105 → 114. Wrong label 6 → 2, coverage 63% → 64%. Caveat: the fix evidence used all three gold pages, so 201 is not strictly held out for the fixes. The 20-page counts support them independently.
+    - Misses now: unlabelled 70, grouping 21, ocr overruled 9, missing 3, wrong label 2, extra 1.
+  - Prasaaskhara (no table) reproduces its baseline exactly: page 51 at 95/99, same as Tesseract 19,115.
+  - `_choose` was split into `_ours_wins`, to satisfy lint.
+  - `/code-review` fixes: fixes run after cleaning, so quote-wrapped tokens are fixed; duplicate entries are rejected; `--ocr-fixes` option added; no table means texts are untouched; version 0.22.0.
+    - Left: the fixes reaching inference (that is their purpose); the raw baseline (by design); the unreachable empty word; BOM handling (shared mapping convention).
+  - `pytest`: 313 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 
@@ -149,4 +163,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- Step 2: trust from shape evidence (`MIN_SUPPORT`), the review queue for under-supported labels, and the per-book confusion table in the recheck. Waiting for the user's go-ahead after Gate 1.
+- The user confirms the draft `ocr-fixes.tsv`. Then step 3: review ranking by words completed, with recipe drafts and evidence on the sheet.

@@ -66,21 +66,26 @@ def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, p
         return "=", Choice.EQUALS
     shape_ids = [item.shape_id for item in items]
     ocr = clean_ocr(ocr)
-    labels = reading.labels
     ours = reading.speller.spell(shape_ids, reading.names)
     complete = UNMAPPED_OPEN not in ours
-    if complete and comparable_text(ours) == comparable_text(ocr):
-        return ours, Choice.AGREED
-    reviewed = [labels[shape_id].source is Source.REVIEW for shape_id in shape_ids] if complete else []
-    if reviewed and (all(reviewed) or (any(reviewed) and ocr and _strong_neighbours(shape_ids, labels))):
-        return ours, Choice.REVIEWED
+    winner = _ours_wins(shape_ids, reading, ours, ocr) if complete else None
+    if winner is not None:
+        return ours, winner
     if complete and ocr:
         page.disagreements.append((key, ours, ocr))
     if ocr:
         return ocr, Choice.WORD_OCR
-    if complete:
-        return "", Choice.UNREAD
-    return readable(ours), Choice.GAP
+    return ("", Choice.UNREAD) if complete else (readable(ours), Choice.GAP)
+
+
+def _ours_wins(shape_ids: list[int], reading: Reading, ours: str, ocr: str) -> Choice | None:
+    labels = reading.labels
+    if comparable_text(ours) == comparable_text(ocr):
+        return Choice.AGREED
+    reviewed = [labels[shape_id].source is Source.REVIEW for shape_id in shape_ids]
+    if all(reviewed) or (any(reviewed) and ocr and _strong_neighbours(shape_ids, labels)):
+        return Choice.REVIEWED
+    return None
 
 
 def _word(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> Written:
