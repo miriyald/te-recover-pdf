@@ -94,6 +94,13 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - **Finding:** the wider word gap (0.85) lowered label coverage from 34% to 20% on 3 pages. Labelled ids fell from 155 to 81, because whole words hold more unlabelled ids than inference can solve (it handles 1–2).
     - Grouping stays on true words, since gold accuracy rose from 277 to 298.
     - Re-measure at Gate 1 (20 consecutive pages, where ids recur more). If coverage stays low, the fix belongs in inference, not grouping.
+  - **`/code-review` (run after the commit; fixed in a follow-up):**
+    - each fragment is measured only against the original letters, so it can't chain through another fragment;
+    - ties go to the earlier component instead of a memory address;
+    - one join helper replaces `_with_dot`, and the sentinel was removed;
+    - tests were added for nearest-of-two and for no chaining.
+    - Left: pixel versus box gap conventions (the threshold uses the measured pixel distance, and the box check only prefilters); heights measured before repair (fragments sit below the median); speed (27 s for 3 pages, to revisit at Gate 1); JIRA (skipped by the user).
+    - After the fixes: ids 1,109, one-offs 788, gold 298/483. `pytest`: 306 passed.
 
 ## In progress
 - None.

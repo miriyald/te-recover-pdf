@@ -55,6 +55,22 @@ def test_a_small_mark_further_away_or_a_large_piece_close_by_stays_separate() ->
     assert len(kept) == 3
 
 
+def test_a_fragment_joins_the_nearer_of_two_letters() -> None:
+    far, near, fragment = _block(100, 100, 40, 50), _block(155, 100, 40, 50), _block(143, 95, 10, 8)
+
+    kept = text_components([far, near, fragment], BODY, PAGE_HEIGHT, REPAIR)
+
+    assert sorted(component.bbox for component in kept) == [(100, 100, 140, 150), (143, 95, 195, 150)]
+
+
+def test_a_fragment_close_only_to_another_fragment_is_not_chained_onto_the_letter() -> None:
+    letter, first, second = _block(100, 100, 40, 50), _block(142, 95, 8, 8), _block(152, 95, 8, 8)
+
+    kept = text_components([letter, first, second], BODY, PAGE_HEIGHT, REPAIR)
+
+    assert sorted(component.bbox for component in kept) == [(100, 95, 150, 150), (152, 95, 160, 103)]
+
+
 def test_fragments_stay_separate_when_the_profile_does_not_repair_strokes() -> None:
     kept = text_components([_block(100, 100, 40, 50), _block(142, 95, 8, 8)], BODY, PAGE_HEIGHT, ScanProfile())
 

@@ -37,26 +37,27 @@ def _in_hole(inner: Component, outer: Component) -> bool:
     return bool(background[row, column] > 1)
 
 
-def _with_dot(outer: Component, dot: Component) -> Component:
-    mask = outer.mask.copy()
-    top, left = dot.bbox[1] - outer.bbox[1], dot.bbox[0] - outer.bbox[0]
-    mask[top:top + dot.height, left:left + dot.width] |= dot.mask
-    return Component(outer.bbox, mask)
+def _union_box(parts: list[Component]) -> tuple[int, int, int, int]:
+    return (min(part.bbox[0] for part in parts), min(part.bbox[1] for part in parts),
+            max(part.bbox[2] for part in parts), max(part.bbox[3] for part in parts))
 
 
-def _joined_mask(first: Component, second: Component) -> Component:
-    left, top = min(first.bbox[0], second.bbox[0]), min(first.bbox[1], second.bbox[1])
-    right, bottom = max(first.bbox[2], second.bbox[2]), max(first.bbox[3], second.bbox[3])
-    mask = np.zeros((bottom - top, right - left), dtype=bool)
-    for part in (first, second):
-        mask[part.bbox[1] - top:part.bbox[3] - top, part.bbox[0] - left:part.bbox[2] - left] |= part.mask
-    return Component((left, top, right, bottom), mask)
+def _canvas(box: tuple[int, int, int, int], parts: list[Component]) -> np.ndarray:
+    mask = np.zeros((box[3] - box[1], box[2] - box[0]), dtype=bool)
+    for part in parts:
+        mask[part.bbox[1] - box[1]:part.bbox[3] - box[1], part.bbox[0] - box[0]:part.bbox[2] - box[0]] |= part.mask
+    return mask
+
+
+def _joined(parts: list[Component]) -> Component:
+    box = _union_box(parts)
+    return Component(box, _canvas(box, parts))
 
 
 def _pixel_gap(fragment: Component, host: Component) -> float:
-    joined = _joined_mask(host, Component(fragment.bbox, np.zeros_like(fragment.mask)))
-    distance = ndimage.distance_transform_edt(~joined.mask)
-    top, left = fragment.bbox[1] - joined.bbox[1], fragment.bbox[0] - joined.bbox[0]
+    box = _union_box([fragment, host])
+    distance = ndimage.distance_transform_edt(~_canvas(box, [host]))
+    top, left = fragment.bbox[1] - box[1], fragment.bbox[0] - box[0]
     return float(distance[top:top + fragment.height, left:left + fragment.width][fragment.mask].min())
 
 
@@ -67,16 +68,18 @@ def _box_gap(first: Component, second: Component) -> int:
 
 def repaired(components: list[Component], height: float, profile: ScanProfile) -> list[Component]:
     size, gap = profile.repair_size * height, profile.repair_gap * height
-    fragments = [component for component in components if max(component.width, component.height) < size]
-    hosts = {id(component): component for component in components if max(component.width, component.height) >= size}
-    joined: set[int] = set()
-    for fragment in fragments:
-        near = [(_pixel_gap(fragment, host), key) for key, host in hosts.items() if _box_gap(fragment, host) <= gap]
-        distance, key = min(near, default=(gap + 1, 0))
-        if distance <= gap:
-            hosts[key] = _joined_mask(hosts[key], fragment)
-            joined.add(id(fragment))
-    return [hosts.get(id(component), component) for component in components if id(component) not in joined]
+    hosts = [index for index, component in enumerate(components) if max(component.width, component.height) >= size]
+    attached: dict[int, list[Component]] = {}
+    for fragment in components:
+        if max(fragment.width, fragment.height) >= size:
+            continue
+        near = sorted((_pixel_gap(fragment, components[host]), host) for host in hosts if _box_gap(fragment, components[host]) <= gap)
+        near = [candidate for candidate in near if candidate[0] <= gap]
+        if near:
+            attached.setdefault(near[0][1], []).append(fragment)
+    joined = {id(fragment) for fragments in attached.values() for fragment in fragments}
+    return [_joined([component, *attached[index]]) if attached.get(index) else component
+            for index, component in enumerate(components) if id(component) not in joined]
 
 
 def text_components(components: list[Component], height: float, page_height: int, profile: ScanProfile) -> list[Component]:
@@ -92,7 +95,7 @@ def text_components(components: list[Component], height: float, page_height: int
         if outer is not None:
             dropped.add(id(speck))
             if _in_hole(speck, outer):
-                hosts[id(outer)] = _with_dot(hosts.get(id(outer), outer), speck)
+                hosts[id(outer)] = _joined([hosts.get(id(outer), outer), speck])
     kept = [hosts.get(id(component), component) for component in text if id(component) not in dropped]
     return repaired(kept, height, profile) if profile.repair_gap > 0 else kept
 
