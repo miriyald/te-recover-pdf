@@ -73,6 +73,29 @@ def test_a_reviewed_id_does_not_override_ocr_when_a_neighbour_is_weak() -> None:
     assert page.disagreements == [((4, 1, 1), "కము", "కమ")]
 
 
+def test_a_wide_gap_inside_a_phrase_becomes_a_space_in_our_reading_when_the_book_sets_a_space_gap() -> None:
+    labels = {1: Label("క", Source.WORDS, 9, 1.0), 2: Label("మ", Source.WORDS, 9, 1.0), 3: Label("ల", Source.WORDS, 9, 1.0)}
+    phrase = [Occurrence(4, 1, 1, 1, 1, Band.MAIN, (0, 0, 40, 50)), Occurrence(4, 1, 1, 2, 2, Band.MAIN, (45, 0, 85, 50)),
+              Occurrence(4, 1, 1, 3, 3, Band.MAIN, (120, 0, 160, 50))]
+
+    spaced = convert_scan_page(words_of(phrase), labels, {(4, 1, 1): "కమల"}, SPELLER, space_gap=0.45)
+    joined = convert_scan_page(words_of(phrase), labels, {(4, 1, 1): "కమల"}, SPELLER)
+
+    assert (spaced.lines, spaced.choices) == (["కమ ల"], {Choice.AGREED: 1})
+    assert joined.lines == ["కమల"]
+
+
+def test_spaces_are_measured_against_the_pages_letters_so_a_word_of_small_marks_is_not_split() -> None:
+    labels = {1: Label("క", Source.WORDS, 9, 1.0), 2: Label("మ", Source.WORDS, 9, 1.0), 4: Label("ం", Source.WORDS, 9, 1.0)}
+    letters = [Occurrence(4, 1, 1, position, shape_id, Band.MAIN, (position * 60, 0, position * 60 + 50, 50))
+               for position, shape_id in ((1, 1), (2, 2), (3, 1), (4, 2))]
+    marks = [Occurrence(4, 2, 1, 1, 4, Band.MAIN, (0, 100, 10, 110)), Occurrence(4, 2, 1, 2, 4, Band.MAIN, (22, 100, 32, 110))]
+
+    page = convert_scan_page(words_of([*letters, *marks]), labels, {(4, 1, 1): "కమకమ", (4, 2, 1): "ంం"}, SPELLER, space_gap=0.5)
+
+    assert page.lines == ["కమకమ", "ంం"]
+
+
 def test_a_word_tesseract_cannot_read_is_written_only_from_reviewed_ids() -> None:
     words = words_of([_at(1, 1, 1, 1), _at(1, 2, 1, 3), _at(1, 3, 1, 1)])
     labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}

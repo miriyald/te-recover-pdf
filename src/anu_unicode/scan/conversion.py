@@ -9,6 +9,7 @@ from itertools import groupby
 from anu_unicode.convert import UNMAPPED_OPEN
 from anu_unicode.scan.index import EQUALS, Occurrence
 from anu_unicode.scan.inference import OCR_NOISE, Label, Source, clean_ocr, comparable_text
+from anu_unicode.scan.ink import letter_of
 from anu_unicode.scan.names import Speller
 from anu_unicode.scan.source import SHAPE_BASE, SHAPE_LIMIT, shape_id_of
 from anu_unicode.scan.word_ocr import WordKey
@@ -55,10 +56,29 @@ class Reading:
     labels: Mapping[int, Label]
     names: Mapping[int, str]
     speller: Speller
+    space: float
 
 
 def equals_word(items: list[Occurrence]) -> bool:
     return all(item.shape_id == EQUALS for item in items)
+
+
+def _segments(items: list[Occurrence], gap: float) -> list[list[Occurrence]]:
+    segments = [[items[0]]]
+    right = items[0].bbox[2]
+    for item in items[1:]:
+        if item.bbox[0] - right >= gap:
+            segments.append([])
+        segments[-1].append(item)
+        right = max(right, item.bbox[2])
+    return segments
+
+
+def _spelled(items: list[Occurrence], reading: Reading) -> str:
+    if not reading.space:
+        return reading.speller.spell([item.shape_id for item in items], reading.names)
+    segments = _segments(items, reading.space)
+    return " ".join(reading.speller.spell([item.shape_id for item in segment], reading.names) for segment in segments)
 
 
 def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> tuple[str, Choice]:
@@ -66,7 +86,7 @@ def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, p
         return "=", Choice.EQUALS
     shape_ids = [item.shape_id for item in items]
     ocr = clean_ocr(ocr)
-    ours = reading.speller.spell(shape_ids, reading.names)
+    ours = _spelled(items, reading)
     complete = UNMAPPED_OPEN not in ours
     winner = _ours_wins(shape_ids, reading, ours, ocr) if complete else None
     if winner is not None:
@@ -118,8 +138,10 @@ def _joined(line: list[Written]) -> list[Written]:
 
 
 def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping[int, Label], texts: Mapping[WordKey, str],
-                      speller: Speller) -> ScanText:
-    reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller)
+                      speller: Speller, space_gap: float = 0.0) -> ScanText:
+    heights = [item.bbox[3] - item.bbox[1] for items in words.values() for item in items if item.shape_id != EQUALS]
+    space = space_gap * letter_of(heights) if space_gap and heights else 0.0
+    reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller, space)
     page = ScanText()
     for _, line in groupby(sorted(words), key=lambda key: key[:2]):
         written = (_word(key, words[key], reading, texts.get(key, ""), page) for key in line)

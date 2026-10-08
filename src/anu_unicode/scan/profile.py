@@ -29,11 +29,12 @@ class Grouping:
 class ScanProfile:
     grouping: Grouping = Grouping()
     shape_unit: HeightUnit = HeightUnit.MEDIAN
+    space_gap: float = 0.0
 
 
 UNITS = {"grouping_unit", "shape_unit"}
 GROUPING = {field.name for field in fields(Grouping)}
-SETTINGS = GROUPING | {"shape_unit"}
+SETTINGS = GROUPING | {"shape_unit", "space_gap"}
 
 
 def load_scan_profile(path: Path) -> ScanProfile:

@@ -93,7 +93,7 @@ def clean_ocr(text: str) -> str:
 
 
 def comparable_text(text: str) -> str:
-    return comparable(unicodedata.normalize("NFC", clean_ocr(text))).strip(QUOTES).strip()
+    return "".join(comparable(unicodedata.normalize("NFC", clean_ocr(text))).strip(QUOTES).split())
 
 
 def render(shape_ids: Sequence[int], names: Mapping[int, str], speller: Speller) -> str:

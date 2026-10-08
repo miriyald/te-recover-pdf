@@ -30,6 +30,10 @@ def test_ocr_text_is_compared_without_quotes_spaces_or_joiners() -> None:
     assert comparable_text(" ‘గోచి’\n") == comparable_text("గోచి") == "గోచి"
 
 
+def test_spaces_inside_a_phrase_do_not_count_as_a_difference() -> None:
+    assert comparable_text("స్వస్య ఉపభోగః") == comparable_text("స్వస్యఉపభోగః")
+
+
 def test_an_unknown_piece_takes_the_only_label_that_reproduces_the_word() -> None:
     words = [WordEvidence((1, 2), "కా"), WordEvidence((3, 2), "గా")]
 

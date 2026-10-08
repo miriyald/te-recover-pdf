@@ -5,7 +5,7 @@ import logging
 import re
 import shutil
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
 from itertools import groupby
@@ -32,7 +32,7 @@ from anu_unicode.scan.profile import ScanProfile, load_scan_profile, unit_height
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
-from anu_unicode.scan.split import Division, divide, find_mixed, readings
+from anu_unicode.scan.split import MIXED, Division, Mixed, divide, find_mixed, readings, subclusters
 from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, word_box, word_image, words_of
 from anu_unicode.shape_naming.shapes import load_recipes
 
@@ -200,10 +200,10 @@ def _member_shapes(arguments: argparse.Namespace, items: list[Occurrence]) -> di
     return shapes
 
 
-def _apply_splits(arguments: argparse.Namespace, divisions: list[Division], shapes: dict[Occurrence, Shape]) -> dict[int, int]:
+def _apply_moves(arguments: argparse.Namespace, groups: list[Sequence[Occurrence]], shapes: dict[Occurrence, Shape]) -> list[int]:
     catalog = load_catalog(arguments.catalog)
-    new_ids = {division.mixed.shape_id: catalog.add_shapes([shapes[item] for item in division.move]) for division in divisions}
-    moved = {(item.page, item.bbox): new_ids[division.mixed.shape_id] for division in divisions for item in division.move}
+    new_ids = [catalog.add_shapes([shapes[item] for item in group]) for group in groups]
+    moved = {(item.page, item.bbox): new_id for group, new_id in zip(groups, new_ids) for item in group}
     assigned = arguments.layout.state / ASSIGNMENTS
     write_occurrences(assigned, [replace(item, shape_id=moved.get((item.page, item.bbox), item.shape_id))
                                  for item in read_occurrences(assigned)])
@@ -211,27 +211,53 @@ def _apply_splits(arguments: argparse.Namespace, divisions: list[Division], shap
     return new_ids
 
 
-def _scan_split(arguments: argparse.Namespace) -> None:
-    occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
+SplitPlan = tuple[list[tuple[Mixed, Division | None]], dict[int, list[list[Occurrence]]], dict[Occurrence, Shape]]
+
+
+def _split_plan(arguments: argparse.Namespace, occurrences: list[Occurrence]) -> SplitPlan:
     words = words_of(occurrences)
     decisions, labels = read_decisions(arguments.decisions), read_labels(arguments.layout.state / LABELS)
     by_id = readings(words, _texts(arguments, words, _renderer(arguments)), labels, _speller(arguments, decisions), marks_of(occurrences))
-    mixed = find_mixed(by_id, labels)
-    wanted = {candidate.shape_id for candidate in mixed}
+    marked = sorted(shape_id for shape_id, name in decisions.items() if name == MIXED)
+    mixed = [candidate for candidate in find_mixed(by_id, labels) if candidate.shape_id not in marked]
+    wanted = {candidate.shape_id for candidate in mixed} | set(marked)
     shapes = _member_shapes(arguments, [item for item in occurrences if item.shape_id in wanted])
     outcomes = [(candidate, divide(candidate, {item: shape.canvas for item, shape in shapes.items() if item.shape_id == candidate.shape_id},
                                    by_id[candidate.shape_id])) for candidate in mixed]
-    divisions = [division for _, division in outcomes if division]
-    new_ids = _apply_splits(arguments, divisions, shapes) if arguments.apply else {}
+    found = {shape_id: subclusters({item: shape for item, shape in shapes.items() if item.shape_id == shape_id}) for shape_id in marked}
+    return outcomes, {shape_id: groups for shape_id, groups in found.items() if len(groups) > 1}, shapes
+
+
+def _scan_split(arguments: argparse.Namespace) -> None:
+    outcomes, regrouped, shapes = _split_plan(arguments, read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv"))
+    divisions = [division for _, division in outcomes if division and division.move]
+    groups: list[Sequence[Occurrence]] = [division.move for division in divisions]
+    groups += [group for found in regrouped.values() for group in found]
+    assigned: list[int | str] = [*_apply_moves(arguments, groups, shapes)] if arguments.apply else [""] * len(groups)
+    new_ids = iter(assigned)
+    split_ids = {division.mixed.shape_id: next(new_ids) for division in divisions}
+    regrouped_ids = {shape_id: [next(new_ids) for _ in found] for shape_id, found in regrouped.items()}
+    _split_report(arguments, [(candidate, division, split_ids.get(candidate.shape_id, "")) for candidate, division in outcomes],
+                  {shape_id: (found, regrouped_ids[shape_id]) for shape_id, found in regrouped.items()})
+
+
+def _split_report(arguments: argparse.Namespace, outcomes: list[tuple[Mixed, Division | None, int | str]],
+                  regrouped: dict[int, tuple[list[list[Occurrence]], list[int | str]]]) -> None:
     out = arguments.layout.intermediate("scan-split")
     out.mkdir(parents=True, exist_ok=True)
-    write_rows(out / "splits.tsv", ("shape_id", "keep", "other", "kept_words", "other_words", "outcome", "moved", "new_id"),
-               ((candidate.shape_id, candidate.keep, candidate.other, candidate.kept, candidate.other_count,
-                 "split" if division else "same_look", len(division.move) if division else 0, new_ids.get(candidate.shape_id, ""))
-                for candidate, division in outcomes))
-    logger.info("mixed shape ids checked", extra={"mixed": len(mixed), "split": len(divisions), "same_look": len(mixed) - len(divisions),
-                                                  "moved": sum(len(division.move) for division in divisions), "applied": arguments.apply,
-                                                  "report": str(out / "splits.tsv")})
+    rows = [(candidate.shape_id, candidate.keep, candidate.other, candidate.kept, candidate.other_count,
+             "split" if division else "same_look", len(division.move) if division else 0, new_id)
+            for candidate, division, new_id in outcomes]
+    rows += [(shape_id, MIXED, "", len(found[0]), sum(len(group) for group in found[1:]), f"regrouped into {len(found)}",
+              sum(len(group) for group in found), ",".join(str(new_id) for new_id in new_ids))
+             for shape_id, (found, new_ids) in regrouped.items()]
+    write_rows(out / "splits.tsv", ("shape_id", "keep", "other", "kept_words", "other_words", "outcome", "moved", "new_id"), rows)
+    divisions = [division for _, division, _ in outcomes if division]
+    moved = sum(len(division.move) for division in divisions) + sum(len(group) for found, _ in regrouped.values() for group in found)
+    logger.info("mixed shape ids checked", extra={
+        "mixed": len(outcomes), "split": len(divisions), "same_look": len(outcomes) - len(divisions), "marked_mixed": len(regrouped),
+        "groups": sum(len(found) for found, _ in regrouped.values()), "moved": moved, "applied": arguments.apply,
+        "report": str(out / "splits.tsv")})
 
 
 @dataclass(frozen=True)
@@ -250,10 +276,11 @@ def _conversion(arguments: argparse.Namespace, pages: list[int] | None) -> Conve
     texts = _fixed(arguments, raw_texts)
     labels = read_labels(arguments.layout.state / LABELS)
     speller = _speller(arguments, read_decisions(arguments.decisions))
+    space_gap = load_scan_profile(arguments.scan_profile).space_gap
     converted = []
     for number in sorted({key[0] for key in words}):
         page_words = {key: items for key, items in words.items() if key[0] == number}
-        converted.append((number, page_words, convert_scan_page(page_words, labels, texts, speller)))
+        converted.append((number, page_words, convert_scan_page(page_words, labels, texts, speller, space_gap)))
     return Conversion(words, raw_texts, texts, ink, converted)
 
 

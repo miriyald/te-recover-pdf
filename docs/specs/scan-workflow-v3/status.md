@@ -170,6 +170,35 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - `/code-review` fixes: the cumulative label (`+N with rows above`); single-meaning variables; a full-order test; version 0.23.0. Left: speed (fine at 20 pages); book-wide gains on page-limited sheets (a decision applies book-wide); confident undecided shapes counted as settled (matches what conversion reads).
   - `pytest`: 316 passed. `lint.cmd`: OK.
 
+- **Gate 2, round 1 (2026-10-09):** the user reviewed 41 shapes. Unclear, mostly black shapes were left empty, confirmed letters were given Unicode, and context pieces and mixed shapes were given symbolic names.
+  - **The decisions alone lowered coverage** (64% → 60%). A symbolic name with no recipe makes its words impossible to spell, so inference loses them as evidence.
+  - **Recipes**, drafted from crops and from the 3 proposals; the user is to confirm them:
+    - `tick` → ∅;
+    - `ప_base` → ప, `స_base` → స, `va_base` → ప;
+    - `proabale_na_base` → `◌్ర` (the pre-base ra bracket, not na).
+    - The speller places `◌్ర` after its consonant (`ప్రణి`), but writes plain `్‌ర` first (`్‌రపణి`), so the pilot's `్‌ర` decisions could never have spelled correctly.
+    - With the recipes, coverage was 65.7% (572 labelled ids).
+  - **Root cause found: spaces.** `comparable_text` kept spaces, so a multi-word unit (about 22% of units at the 0.85 gap) could never agree, and inference could never learn from one. That, not "more unknowns", explained the coverage drop at 0.85.
+    - **Fix 1:** comparison ignores spaces. Coverage rose to 69.0% (680 ids), complete units 563 → 652, and rechecks 15 → 8, since the space noise is gone.
+    - **Fix 2:** a profile `space_gap`. A gap of at least `space_gap` × the **page's** letter height inside a unit becomes a space in our spelling. Tuned on 197 + 209: 0.6 (207/313, held-out 115/170). Without it, the held-out page loses words (108).
+    - Prasaaskhara, under the space-insensitive comparison: page 51 at 95/99, same as Tesseract 19,108 (19,115 before), ఁ 1,029, invented periods dropped 378, disagreements 1,146 (1,159 before). Neutral to slightly better.
+  - **Mixed shapes:** the decision name `mixed` (user's choice) makes `scan-split` re-cluster that id's members on their own pixels at a strict distance of 0.08 (`split.subclusters`), and gives every group a new id.
+    - **Evidence:** id 151 (`లే_chE`) splits cleanly into చే 10, దే 9, లే 9, రే 4; 335 into తే 11, జే 5 + 1; 112 into ్చ 27, ్స 11, and ్చ with a tail 4. Readings-based splitting had only 1–4 readings per id, too few to split on.
+    - **Applied:** 3 ids → 19 groups, 101 pieces moved. Inference then labelled every main group correctly with no review (్చ, ్స, ్చ, చే, దే, లే, రే, తే, జే, జే). Coverage 69.4% (714 ids).
+  - **Gold now: 322/483 (66.7%) against 298 for OCR alone.** Misses: unlabelled 69, grouping 19, ocr overruled 8, missing 4, wrong label 3, extra 1.
+  - `/code-review` fixes:
+    - re-running `scan-split` no longer crashes on an emptied `mixed` id;
+    - marked ids skip the readings split, so nothing moves twice;
+    - a marked id that doesn't divide is left alone;
+    - empty move groups are skipped;
+    - spaces use the page's letter height through one shared `ink.letter_of`;
+    - `space_gap` moved to the profile's top level;
+    - regrouping is order-independent;
+    - version 0.24.0.
+
+    Left: `mixed` acting like a name before a split (it is unspelled, so OCR is used); spacing that isn't compared (geometry sets it); a fixed 0.08 distance until a second book needs another value.
+  - `pytest`: 322 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 

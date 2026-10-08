@@ -1,10 +1,11 @@
 import numpy as np
 
-from anu_unicode.scan.catalog import to_canvas
+from anu_unicode.scan.catalog import shape_of, to_canvas
 from anu_unicode.scan.index import Occurrence
 from anu_unicode.scan.inference import Label, Source
+from anu_unicode.scan.ink import Component
 from anu_unicode.scan.names import Speller
-from anu_unicode.scan.split import Mixed, divide, find_mixed, readings
+from anu_unicode.scan.split import Mixed, divide, find_mixed, readings, subclusters
 from anu_unicode.scan.word_ocr import words_of
 from anu_unicode.scan.words import Band
 
@@ -67,3 +68,29 @@ def test_readings_that_look_the_same_are_not_divided() -> None:
 
     assert divide(Mixed(1, "డ", "ద", 5, 5), {item: _square() for item in items},
                   {item: "డ" if index < 5 else "ద" for index, item in enumerate(items)}) is None
+
+
+def test_a_reviewer_marked_mixed_id_is_divided_by_its_own_pixels_largest_group_first() -> None:
+    square, ring = np.ones((50, 50), dtype=bool), np.ones((50, 50), dtype=bool)
+    ring[8:-8, 8:-8] = False
+    members = [_at(4, word, 1, 7) for word in range(1, 6)]
+    shapes = {item: shape_of(Component(item.bbox, mask), Band.MAIN, BODY)
+              for item, mask in zip(members, [square, ring, square, ring, square])}
+
+    groups = subclusters(shapes)
+
+    assert [len(group) for group in groups] == [3, 2]
+    assert set(groups[1]) == {members[1], members[3]}
+
+
+def test_regrouping_does_not_depend_on_the_order_members_arrive_in() -> None:
+    square, ring = np.ones((50, 50), dtype=bool), np.ones((50, 50), dtype=bool)
+    ring[8:-8, 8:-8] = False
+    members = [_at(4, word, word, 7) for word in range(1, 5)]
+    shapes = {item: shape_of(Component(item.bbox, mask), Band.MAIN, BODY) for item, mask in zip(members, [square, ring, ring, square])}
+
+    assert subclusters(shapes) == subclusters(dict(reversed(list(shapes.items()))))
+
+
+def test_an_id_with_no_members_has_no_groups() -> None:
+    assert not subclusters({})
