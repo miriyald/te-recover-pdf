@@ -80,6 +80,20 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 
     Left: the defaults going back to median is the user's decision, and computing a height twice is trivial.
   - `pytest`: 301 passed. `lint.cmd`: OK. Version 0.18.0.
+- **Step 1b: stroke repair** (`page.repaired`, profile `repair_size` and `repair_gap`, off by default).
+  - **Evidence:** pixel gap to the nearest ink in the word, by the pilot's reviewed names.
+
+    | Piece | Size | Median gap | p10 gap |
+    |---|---|---|---|
+    | `slash`, `right_top` | 16–21 px | ~3 px | 2 px |
+    | `tick` | 43 px | 9 px | 5.3 px |
+    | Real marks (`్య`, `ృ`, `(`, `pipe`, `ః`, `'`, `.`) | — | 7.5–13 px | ≥ 5.2 px |
+
+    `tick` is printed as a separate piece, not broken off, so it stays separate and is handled by recipes.
+  - Naishadamu: `repair_size` 0.4, `repair_gap` 0.08 (5 px). Ids 1,165 → 1,106, one-offs 810 → 784. Gold unchanged at 298/483.
+  - **Finding:** the wider word gap (0.85) lowered label coverage from 34% to 20% on 3 pages. Labelled ids fell from 155 to 81, because whole words hold more unlabelled ids than inference can solve (it handles 1–2).
+    - Grouping stays on true words, since gold accuracy rose from 277 to 298.
+    - Re-measure at Gate 1 (20 consecutive pages, where ids recur more). If coverage stays low, the fix belongs in inference, not grouping.
 
 ## In progress
 - None.
@@ -88,4 +102,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- Step 1b: stroke repair before clustering.
+- Step 1c: drop loose specks.

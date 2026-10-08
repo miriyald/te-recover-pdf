@@ -5,5 +5,7 @@
   "speck_size": 0.25,
   "word_gap": 0.85,
   "stack_gap": 0.25,
-  "bar_height": 0.3
+  "bar_height": 0.3,
+  "repair_size": 0.4,
+  "repair_gap": 0.08
 }

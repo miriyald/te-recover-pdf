@@ -35,6 +35,32 @@ def test_a_blank_scanned_page_has_no_lines_and_no_heights() -> None:
     assert (page.body_height, page.lines) == (0.0, [])
 
 
+REPAIR = ScanProfile(repair_size=0.4, repair_gap=0.08)
+
+
+def test_a_small_fragment_almost_touching_its_letter_is_joined_back_to_it() -> None:
+    letter, fragment = _block(100, 100, 40, 50), _block(142, 95, 8, 8)
+
+    kept = text_components([letter, fragment], BODY, PAGE_HEIGHT, REPAIR)
+
+    assert [component.bbox for component in kept] == [(100, 95, 150, 150)]
+    assert int(kept[0].mask.sum()) == 40 * 50 + 8 * 8
+
+
+def test_a_small_mark_further_away_or_a_large_piece_close_by_stays_separate() -> None:
+    letter, mark, subscript = _block(100, 100, 40, 50), _block(150, 95, 8, 8), _block(100, 152, 40, 30)
+
+    kept = text_components([letter, mark, subscript], BODY, PAGE_HEIGHT, REPAIR)
+
+    assert len(kept) == 3
+
+
+def test_fragments_stay_separate_when_the_profile_does_not_repair_strokes() -> None:
+    kept = text_components([_block(100, 100, 40, 50), _block(142, 95, 8, 8)], BODY, PAGE_HEIGHT, ScanProfile())
+
+    assert len(kept) == 2
+
+
 def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> None:
     head_rule, head_text = _block(0, 60, 900, 10), _block(0, 10, 40, 40)
     foot_rule, page_number = _block(0, 930, 900, 10), _block(400, 945, 30, 40)
