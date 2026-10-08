@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -13,9 +13,8 @@ class HeightUnit(StrEnum):
 
 
 @dataclass(frozen=True)
-class ScanProfile:
+class Grouping:
     grouping_unit: HeightUnit = HeightUnit.MEDIAN
-    shape_unit: HeightUnit = HeightUnit.MEDIAN
     furniture_width: float = 8.0
     speck_size: float = 0.3
     word_gap: float = 0.45
@@ -26,15 +25,23 @@ class ScanProfile:
     loose_speck_size: float = 0.0
 
 
-UNITS = {"grouping_unit", "shape_unit"}
+@dataclass(frozen=True)
+class ScanProfile:
+    grouping: Grouping = Grouping()
+    shape_unit: HeightUnit = HeightUnit.MEDIAN
+
+
+CHOICES = {"grouping_unit": HeightUnit, "shape_unit": HeightUnit}
+GROUPING = {field.name for field in fields(Grouping)}
 
 
 def load_scan_profile(path: Path) -> ScanProfile:
     if not path.exists():
         return ScanProfile()
-    settings: dict[str, Any] = {name: HeightUnit(value) if name in UNITS else float(value)
+    settings: dict[str, Any] = {name: CHOICES[name](value) if name in CHOICES else float(value)
                                 for name, value in json.loads(path.read_text(encoding="utf-8")).items()}
-    return ScanProfile(**settings)
+    grouping = Grouping(**{name: value for name, value in settings.items() if name in GROUPING})
+    return ScanProfile(grouping, **{name: value for name, value in settings.items() if name not in GROUPING})
 
 
 def unit_height(components: list[Component], unit: HeightUnit) -> float:

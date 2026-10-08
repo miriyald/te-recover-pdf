@@ -6,7 +6,7 @@ from PIL import Image
 
 from anu_unicode.scan.ink import Component, letter_height, median_height
 from anu_unicode.scan.page import scan_page, text_components
-from anu_unicode.scan.profile import ScanProfile
+from anu_unicode.scan.profile import Grouping, ScanProfile
 
 BODY = 50.0
 PAGE_HEIGHT = 1000
@@ -35,7 +35,7 @@ def test_a_blank_scanned_page_has_no_lines_and_no_heights() -> None:
     assert (page.body_height, page.lines) == (0.0, [])
 
 
-REPAIR = ScanProfile(repair_size=0.4, repair_gap=0.08)
+REPAIR = Grouping(repair_size=0.4, repair_gap=0.08)
 
 
 def test_a_small_fragment_almost_touching_its_letter_is_joined_back_to_it() -> None:
@@ -72,7 +72,7 @@ def test_a_fragment_close_only_to_another_fragment_is_not_chained_onto_the_lette
 
 
 def test_fragments_stay_separate_when_the_profile_does_not_repair_strokes() -> None:
-    kept = text_components([_block(100, 100, 40, 50), _block(142, 95, 8, 8)], BODY, PAGE_HEIGHT, ScanProfile())
+    kept = text_components([_block(100, 100, 40, 50), _block(142, 95, 8, 8)], BODY, PAGE_HEIGHT, Grouping())
 
     assert len(kept) == 2
 
@@ -82,7 +82,7 @@ def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> Non
     foot_rule, page_number = _block(0, 930, 900, 10), _block(400, 945, 30, 40)
     body = _block(0, 400, 40, 50)
 
-    kept = text_components([head_rule, head_text, body, foot_rule, page_number], BODY, PAGE_HEIGHT, ScanProfile())
+    kept = text_components([head_rule, head_text, body, foot_rule, page_number], BODY, PAGE_HEIGHT, Grouping())
 
     assert kept == [body]
 
@@ -90,7 +90,7 @@ def test_running_head_and_footer_between_the_ornament_rules_are_dropped() -> Non
 def test_a_speck_enclosed_by_a_letter_is_noise_but_a_free_speck_is_kept() -> None:
     letter, enclosed, free = _block(100, 400, 40, 50), _block(110, 410, 5, 5), _block(300, 400, 5, 5)
 
-    kept = text_components([letter, enclosed, free], BODY, PAGE_HEIGHT, ScanProfile())
+    kept = text_components([letter, enclosed, free], BODY, PAGE_HEIGHT, Grouping())
 
     assert kept == [letter, free]
 
@@ -100,7 +100,7 @@ def test_a_dot_inside_a_letters_hole_becomes_part_of_the_letter() -> None:
     mask[8:-8, 8:-8] = False
     ring, dot = Component((100, 400, 140, 450), mask), _block(117, 422, 6, 6)
 
-    kept = text_components([ring, dot], BODY, PAGE_HEIGHT, ScanProfile())
+    kept = text_components([ring, dot], BODY, PAGE_HEIGHT, Grouping())
 
     assert len(kept) == 1
     assert kept[0].bbox == ring.bbox
@@ -111,6 +111,6 @@ def test_a_glyph_whose_subscript_reaches_past_the_foot_rule_is_kept() -> None:
     foot_rule, page_number = _block(0, 930, 900, 10), _block(400, 945, 30, 40)
     last_line = _block(0, 890, 40, 60)
 
-    kept = text_components([foot_rule, page_number, last_line], BODY, PAGE_HEIGHT, ScanProfile())
+    kept = text_components([foot_rule, page_number, last_line], BODY, PAGE_HEIGHT, Grouping())
 
     assert kept == [last_line]

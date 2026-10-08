@@ -4,7 +4,7 @@ from enum import StrEnum
 import numpy as np
 
 from anu_unicode.scan.ink import Box, Component
-from anu_unicode.scan.profile import ScanProfile
+from anu_unicode.scan.profile import Grouping
 
 MIN_OVERLAP = 0.3
 MAIN_OVERLAP = 0.5
@@ -152,12 +152,12 @@ def _word(group: list[Component], equals: bool) -> ScanWord:
     return ScanWord(_drawing_order([Placed(component, _classify(component, band)) for component in group]), band, equals)
 
 
-def page_words(components: list[Component], height: float, profile: ScanProfile) -> list[list[ScanWord]]:
-    stack_gap, speck = profile.stack_gap * height, profile.loose_speck_size * height
-    equals = _stacked_bars(components, profile.bar_height * height, stack_gap)
+def page_words(components: list[Component], height: float, grouping: Grouping) -> list[list[ScanWord]]:
+    stack_gap, speck = grouping.stack_gap * height, grouping.loose_speck_size * height
+    equals = _stacked_bars(components, grouping.bar_height * height, stack_gap)
     in_equals = {id(stroke) for stroke in equals}
     letters = [component for component in components if id(component) not in in_equals]
-    words = [_word(group, False) for group in _groups(letters, profile.word_gap * height, stack_gap) if not _loose_speck(group, speck)]
+    words = [_word(group, False) for group in _groups(letters, grouping.word_gap * height, stack_gap) if not _loose_speck(group, speck)]
     words += [_word(group, True) for group in _groups(equals, 0, stack_gap)]
     return _lines(words)
 

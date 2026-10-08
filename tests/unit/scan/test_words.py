@@ -1,11 +1,11 @@
 import numpy as np
 
 from anu_unicode.scan.ink import Component, find_components
-from anu_unicode.scan.profile import ScanProfile
+from anu_unicode.scan.profile import Grouping
 from anu_unicode.scan.words import Band, page_words
 
 LETTER = 50.0
-PROFILE = ScanProfile()
+PROFILE = Grouping()
 
 
 def _block(left: int, top: int, width: int, height: int) -> Component:
@@ -103,7 +103,7 @@ def test_a_thin_word_lower_on_a_skewed_line_still_joins_that_line() -> None:
 def test_a_lone_speck_between_words_is_dropped_when_the_profile_says_so() -> None:
     word, speck, full_stop = _block(0, 0, 40, 50), _block(200, 10, 7, 7), _block(45, 40, 8, 8)
 
-    kept = page_words([word, speck, full_stop], LETTER, ScanProfile(loose_speck_size=0.18))
+    kept = page_words([word, speck, full_stop], LETTER, Grouping(loose_speck_size=0.18))
     default = page_words([word, speck, full_stop], LETTER, PROFILE)
 
     assert [[placed.component for placed in item.glyphs] for item in kept[0]] == [[word, full_stop]]
@@ -113,7 +113,7 @@ def test_a_lone_speck_between_words_is_dropped_when_the_profile_says_so() -> Non
 def test_a_lone_mark_the_size_of_a_full_stop_is_kept() -> None:
     word, lone_stop = _block(0, 0, 40, 50), _block(200, 40, 12, 12)
 
-    kept = page_words([word, lone_stop], LETTER, ScanProfile(loose_speck_size=0.18))
+    kept = page_words([word, lone_stop], LETTER, Grouping(loose_speck_size=0.18))
 
     assert len(kept[0]) == 2
 

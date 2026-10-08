@@ -10,7 +10,7 @@ Stages 1–5 of `design.md`, built and measured in order. Each stage ends with a
 - [x] **1a.** Letter-height body: an upper-peak estimator, with Prasaaskhara thresholds kept by re-expressing the gap constants. Tests come first.
 - [x] **1b.** Stroke repair before clustering (fragment → host). Measure one-off ids and coverage before and after.
 - [x] **1c.** Drop loose specks.
-- [ ] **1d.** `scan-grouping-review`: a sheet of doubtful groupings, with an exported decisions file that grouping reads back.
+- [~] **1d.** `scan-grouping-review`: a sheet of doubtful groupings, with an exported decisions file that grouping reads back. Skipped: the remaining grouping misses are mostly OCR artefacts (see status).
 - [x] **1a′.** Per-book `profile.json` (`scan/profile.py`). The defaults reproduce Prasaaskhara, and Naishadamu sets letter units for both grouping and shapes. `=` words are marked when grouping forms them (`ScanWord.equals`).
 - [x] **1e.** Tune Naishadamu's `word_gap` on gold pages 197 and 209, and check it on 201. Done: 0.85 (see status). A per-page adaptive gap is not needed for now.
 - [ ] **Gate 1.** Fresh index of 20 consecutive Naishadamu pages and the gold pages. Report grouping errors on gold, one-off ids, coverage and gold accuracy, then stop.

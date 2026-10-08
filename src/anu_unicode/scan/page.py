@@ -5,7 +5,7 @@ import pymupdf
 from scipy import ndimage
 
 from anu_unicode.scan.ink import Component, find_components, render_ink
-from anu_unicode.scan.profile import ScanProfile, unit_height
+from anu_unicode.scan.profile import Grouping, ScanProfile, unit_height
 from anu_unicode.scan.words import ScanWord, page_words
 
 MIN_AREA = 40
@@ -66,8 +66,8 @@ def _box_gap(first: Component, second: Component) -> int:
     return max(horizontal, second.bbox[1] - first.bbox[3], first.bbox[1] - second.bbox[3])
 
 
-def repaired(components: list[Component], height: float, profile: ScanProfile) -> list[Component]:
-    size, gap = profile.repair_size * height, profile.repair_gap * height
+def repaired(components: list[Component], height: float, grouping: Grouping) -> list[Component]:
+    size, gap = grouping.repair_size * height, grouping.repair_gap * height
     hosts = [index for index, component in enumerate(components) if max(component.width, component.height) >= size]
     attached: dict[int, list[Component]] = {}
     for fragment in components:
@@ -82,22 +82,22 @@ def repaired(components: list[Component], height: float, profile: ScanProfile) -
             for index, component in enumerate(components) if id(component) not in joined]
 
 
-def text_components(components: list[Component], height: float, page_height: int, profile: ScanProfile) -> list[Component]:
-    furniture = profile.furniture_width * height
+def text_components(components: list[Component], height: float, page_height: int, grouping: Grouping) -> list[Component]:
+    furniture = grouping.furniture_width * height
     rules = [component for component in components if component.width > furniture]
     top, bottom = _text_area(rules, page_height)
     text = [component for component in components
             if component.width <= furniture and top <= (component.bbox[1] + component.bbox[3]) / 2 <= bottom]
     hosts: dict[int, Component] = {}
     dropped: set[int] = set()
-    for speck in (component for component in text if max(component.width, component.height) < profile.speck_size * height):
+    for speck in (component for component in text if max(component.width, component.height) < grouping.speck_size * height):
         outer = next((other for other in text if _inside(speck, other)), None)
         if outer is not None:
             dropped.add(id(speck))
             if _in_hole(speck, outer):
                 hosts[id(outer)] = _joined([hosts.get(id(outer), outer), speck])
     kept = [hosts.get(id(component), component) for component in text if id(component) not in dropped]
-    return repaired(kept, height, profile) if profile.repair_gap > 0 else kept
+    return repaired(kept, height, grouping) if grouping.repair_gap > 0 else kept
 
 
 def scan_page(page: pymupdf.Page, number: int, profile: ScanProfile) -> ScanPage:
@@ -105,6 +105,6 @@ def scan_page(page: pymupdf.Page, number: int, profile: ScanProfile) -> ScanPage
     components = find_components(ink, MIN_AREA)
     if not components:
         return ScanPage(number, 0.0, [])
-    height = unit_height(components, profile.grouping_unit)
-    text = text_components(components, height, ink.shape[0], profile)
-    return ScanPage(number, unit_height(components, profile.shape_unit), page_words(text, height, profile))
+    height = unit_height(components, profile.grouping.grouping_unit)
+    text = text_components(components, height, ink.shape[0], profile.grouping)
+    return ScanPage(number, unit_height(components, profile.shape_unit), page_words(text, height, profile.grouping))

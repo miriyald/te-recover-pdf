@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from anu_unicode.scan.ink import Component
-from anu_unicode.scan.profile import HeightUnit, ScanProfile, load_scan_profile, unit_height
+from anu_unicode.scan.profile import Grouping, HeightUnit, ScanProfile, load_scan_profile, unit_height
 
 
 def _tall(height: int) -> Component:
@@ -21,7 +21,7 @@ def test_a_profile_overrides_only_what_it_names(tmp_path: Path) -> None:
 
     profile = load_scan_profile(tmp_path / "profile.json")
 
-    assert profile == ScanProfile(grouping_unit=HeightUnit.LETTER, word_gap=0.38)
+    assert profile == ScanProfile(Grouping(grouping_unit=HeightUnit.LETTER, word_gap=0.38))
 
 
 def test_numbers_and_units_are_converted_when_the_profile_is_loaded(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ def test_numbers_and_units_are_converted_when_the_profile_is_loaded(tmp_path: Pa
 
     profile = load_scan_profile(tmp_path / "profile.json")
 
-    assert (profile.word_gap, profile.shape_unit) == (0.85, HeightUnit.LETTER)
+    assert (profile.grouping.word_gap, profile.shape_unit) == (0.85, HeightUnit.LETTER)
 
 
 def test_a_badly_typed_number_fails_when_the_profile_is_loaded(tmp_path: Path) -> None:

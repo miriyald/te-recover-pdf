@@ -109,6 +109,20 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - `/code-review` fixes: the cutoff lowered from 0.25 to 0.18 on the evidence; a full-stop-sized boundary test; the threshold computed once; version 0.20.0.
   - Left: specks in clusters (none on gold); the separate inside-letter speck rule (a different job); bounding-box size only applies to pieces left alone. The dropped-speck trace is noted for 1d.
   - `pytest`: 308 passed.
+- **Step 1d (grouping check sheet): skipped, on the evidence.** Of the 21 remaining `grouping` misses on gold, most are not segmentation errors:
+  - spaces Tesseract puts inside one crop;
+  - colon spacing;
+  - dandas Tesseract misreads;
+  - stray marks read as letters.
+
+  A manual sheet would cost reviewer time and fix almost none of them.
+- **Finding: at the 0.85 gap, units are phrases, not words.** 79 of 363 crops (22%) hold several real words. The gold gain came from Tesseract reading multi-word crops better.
+  - **Experiment, rejected:** line-context OCR (`image_to_data --psm 7` on each line, mapped to our words by word boxes) scored 277/483 at every word gap, below the 298 for phrase crops.
+  - Tesseract modes on the same phrase crops: psm 8 gave 241, psm 7 gave 196, psm 6 gave 176 (these counts include `=` bars read as text). The single-word mode on phrase-sized chunks is best, and only the line modes return word boxes. The line-OCR code was removed.
+  - **Decision:** keep 0.85, with phrases as the unit for OCR and conversion.
+    - Training data is unaffected, since `tesstrain` trains on line and phrase images.
+    - Label coverage is the cost: 17–20% on 3 pages against 33% at 0.38, because inference solves only 1–2 unknowns per unit. Re-measure at Gate 1. If coverage stays low, widen inference (more unknowns per unit), not grouping.
+- `ScanProfile` was split into `Grouping` (the grouping unit and thresholds) plus `shape_unit`, to satisfy lint. JSON profiles stay flat.
 
 ## In progress
 - None.
@@ -117,4 +131,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- Step 1d: grouping check sheet (doubtful groupings, including dropped specks).
+- Gate 1: a fresh index of 20 consecutive Naishadamu pages (195–214) plus the gold pages; report coverage, one-off ids and gold accuracy, then stop.
