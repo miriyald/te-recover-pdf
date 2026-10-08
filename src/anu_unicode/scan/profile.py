@@ -23,6 +23,7 @@ class ScanProfile:
     bar_height: float = 0.35
     repair_size: float = 0.0
     repair_gap: float = 0.0
+    loose_speck_size: float = 0.0
 
 
 UNITS = {"grouping_unit", "shape_unit"}

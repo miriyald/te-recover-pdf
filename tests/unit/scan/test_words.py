@@ -100,6 +100,24 @@ def test_a_thin_word_lower_on_a_skewed_line_still_joins_that_line() -> None:
     assert [len(line) for line in lines] == [4]
 
 
+def test_a_lone_speck_between_words_is_dropped_when_the_profile_says_so() -> None:
+    word, speck, full_stop = _block(0, 0, 40, 50), _block(200, 10, 7, 7), _block(45, 40, 8, 8)
+
+    kept = page_words([word, speck, full_stop], LETTER, ScanProfile(loose_speck_size=0.18))
+    default = page_words([word, speck, full_stop], LETTER, PROFILE)
+
+    assert [[placed.component for placed in item.glyphs] for item in kept[0]] == [[word, full_stop]]
+    assert len(default[0]) == 2
+
+
+def test_a_lone_mark_the_size_of_a_full_stop_is_kept() -> None:
+    word, lone_stop = _block(0, 0, 40, 50), _block(200, 40, 12, 12)
+
+    kept = page_words([word, lone_stop], LETTER, ScanProfile(loose_speck_size=0.18))
+
+    assert len(kept[0]) == 2
+
+
 def _equals_words(*components: Component) -> list[bool]:
     return [word.equals for line in page_words(list(components), LETTER, PROFILE) for word in line]
 

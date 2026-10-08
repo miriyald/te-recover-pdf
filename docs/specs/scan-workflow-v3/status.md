@@ -101,6 +101,14 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
     - tests were added for nearest-of-two and for no chaining.
     - Left: pixel versus box gap conventions (the threshold uses the measured pixel distance, and the box check only prefilters); heights measured before repair (fragments sit below the median); speed (27 s for 3 pages, to revisit at Gate 1); JIRA (skipped by the user).
     - After the fixes: ids 1,109, one-offs 788, gold 298/483. `pytest`: 306 passed.
+- **Step 1c: loose specks** (`words._loose_speck`, profile `loose_speck_size`, off by default).
+  - **Evidence:**
+    - after the 0.85 word gap, only 2 one-piece words under 20 px remained on the gold pages (7 px and 9 px, both read as `ఆ`; these were the 2 `extra` misses);
+    - the pilot's full stops are about 15 px (0.24 letter).
+  - Naishadamu: `loose_speck_size` 0.18 (11 px), below any full stop. extra 2 → 1; gold unchanged at 298/483. The remaining extra `ఆ` is a multi-piece word, probably colon dots.
+  - `/code-review` fixes: the cutoff lowered from 0.25 to 0.18 on the evidence; a full-stop-sized boundary test; the threshold computed once; version 0.20.0.
+  - Left: specks in clusters (none on gold); the separate inside-letter speck rule (a different job); bounding-box size only applies to pieces left alone. The dropped-speck trace is noted for 1d.
+  - `pytest`: 308 passed.
 
 ## In progress
 - None.
@@ -109,4 +117,4 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
 - None.
 
 ## Next steps
-- Step 1c: drop loose specks.
+- Step 1d: grouping check sheet (doubtful groupings, including dropped specks).
