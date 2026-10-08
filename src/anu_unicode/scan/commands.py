@@ -12,6 +12,7 @@ from itertools import groupby
 from pathlib import Path
 
 import pymupdf
+from PIL import Image
 
 from anu_unicode.command_support import page_range, requested_pages
 from anu_unicode.convert import UNMAPPED_OPEN
@@ -27,6 +28,7 @@ from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, rea
 from anu_unicode.scan.ink import Bitmap, Component, find_components, render_ink
 from anu_unicode.scan.names import Speller, is_symbolic, validate_recipes
 from anu_unicode.scan.ocr_fixes import fix_text, load_fixes
+from anu_unicode.scan.ocr_training import Tools, Training, confirmed_lines, make_lstmf, model_entries, train, write_lines
 from anu_unicode.scan.page import MIN_AREA, ScanPage, scan_page
 from anu_unicode.scan.profile import ScanProfile, load_scan_profile, unit_height
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
@@ -362,6 +364,36 @@ def _scan_evaluate(arguments: argparse.Namespace) -> None:
         "causes": dict(Counter(miss.cause.value for score in scores for miss in score.misses)), "out": str(out)})
 
 
+def _training_lines(arguments: argparse.Namespace, entries: set[str]) -> list[tuple[str, Image.Image, str]]:
+    conversion = _conversion(arguments, None)
+    lines = []
+    for number, page_words, page in conversion.pages:
+        if number in arguments.gold:
+            continue
+        for line in confirmed_lines(page, entries):
+            box = word_box([item for key in line.keys for item in page_words[key]])
+            lines.append((f"p{number}-{line.keys[0][1]:02}-{line.keys[0][2]:02}", word_image(conversion.ink(number), box), line.text))
+    return lines
+
+
+def _scan_train_ocr(arguments: argparse.Namespace) -> None:
+    tesseract = Path(shutil.which(arguments.tesseract) or arguments.tesseract)
+    base = arguments.base_model or tesseract.parent / "tessdata" / "tel.traineddata"
+    if not base.is_file():
+        raise FileNotFoundError(f"no base model at {base}; pass --base-model")
+    folder = arguments.layout.state / "ocr" / "train" / arguments.name
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    training = Training(Tools(tesseract), base, folder)
+    lines = _training_lines(arguments, model_entries(training))
+    images = write_lines(folder, lines)
+    lstmf = make_lstmf(training, images)
+    output = train(training, lstmf, arguments.layout.state / "ocr" / f"{arguments.name}.traineddata", arguments.iterations)
+    logger.info("scan OCR model trained", extra={
+        "lines": len(lines), "dropped": len(images) - len(lstmf), "held_out_pages": sorted(arguments.gold), "base": str(base),
+        "iterations": arguments.iterations, "model": str(output), "log": str(folder / "training.log")})
+
+
 def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
     parser.add_argument("--pages", type=page_range, help=f"1-based, e.g. 51 or 4-13; default {default}")
 
@@ -401,6 +433,13 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     evaluate.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt files holding the correct text")
     _decisions_option(evaluate)
     evaluate.set_defaults(handler=_scan_evaluate)
+    train_ocr = commands.add_parser("scan-train-ocr", help=f"{SCAN} fine-tune Tesseract on confirmed words, gold pages held out")
+    train_ocr.add_argument("--name", required=True, help="model name; written to files/<book>/state/ocr/<name>.traineddata")
+    train_ocr.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt gold pages, kept out of training")
+    train_ocr.add_argument("--iterations", type=int, default=3000, help="lstmtraining iterations")
+    train_ocr.add_argument("--base-model", type=existing_file, help="traineddata to start from; default tessdata/tel.traineddata")
+    _decisions_option(train_ocr)
+    train_ocr.set_defaults(handler=_scan_train_ocr)
     split = commands.add_parser("scan-split", help=f"{SCAN} find shape ids that hold two shapes and split them (report unless --apply)")
     _decisions_option(split)
     split.add_argument("--catalog", type=Path, help="default files/<book>/state/scan-catalog.npz")

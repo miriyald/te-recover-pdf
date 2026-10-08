@@ -252,6 +252,42 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - **Not yet built:** `scan-train-ocr` as a command. The export and training ran as throwaway scripts, which is the next step if round 2 is wanted.
   - `pytest`: 327 passed. `lint.cmd`: OK.
 
+- **Step 4, round 2 (2026-10-09):**
+  - **New characters deferred, on the evidence.** The confirmed training text holds ఁ only 6 times and ఱ never. Tesseract can't output them, so words containing them never become AGREED. The pipeline already writes ఁ where our own reading wins.
+  - **More pages instead:** the index grew to pages 195–254 (60 pages).
+    - Coverage rose to 83.2% (1,996 labelled ids), with 2,976 complete units;
+    - gold was unchanged under `tel_ns` (264/370, 7.5%);
+    - the full run takes 29 min, mostly OCR of new words.
+  - **`scan-train-ocr --name <model> --gold <folder>`** (`scan/ocr_training.py`):
+    - exports confirmed units from every non-gold page, checked as encodable by any segmentation of the model's entries;
+    - writes PNG, `.gt.txt` and `.box` with LF line endings;
+    - makes `.lstmf` files (keeping only those Tesseract actually wrote);
+    - holds out a seeded 10% for evaluation;
+    - runs `lstmtraining` from stock `tel` (found next to `--tesseract` or on PATH);
+    - publishes the lowest training-error checkpoint to `files/<book>/state/ocr/<name>.traineddata`;
+    - refuses fewer than 20 lines or an output that would overwrite its base.
+    - **Bug found while running it:** Python writes CRLF on Windows, so `lstmtraining` looked for `….lstmf\r` and failed ("Deserialize header failed"). Round 1 escaped only because its lists had been rewritten by hand.
+  - **Round 2 trained on 2,299 lines** (round 1: 467), 6,000 iterations.
+
+    | Gold, held out | stock `tel` | round 1 `tel_ns` | **round 2 `tel_ns2`** |
+    |---|---|---|---|
+    | Letter words | 253/370 (68.4%) | 264 (71.4%) | **280 (75.7%)** |
+    | Letter error rate | 8.7% | 7.5% | **6.3%** |
+
+  - **Checkpoint choice:**
+    - the last checkpoint (published as `tel_ns2`) scored 6.3%;
+    - the lowest training-error checkpoint (1.134%) scored 6.6% with 281 words;
+    - the 8-letter difference is noise, and `lstmtraining` logged no eval-set error to select by.
+    - The command publishes the lowest training-error checkpoint, as standard. The book keeps the measured `tel_ns2`.
+  - **Pipeline with `tel_ns2`, 60 pages:**
+    - coverage **84.0%** (2,141 ids), 3,124 complete units;
+    - gold letter words **280/370 (75.7%)**, letter error rate **6.3%**;
+    - strict words 345/483.
+    - Letter misses: unlabelled 45, grouping 17, wrong label 4, extra 3, ocr overruled 1, missing 1.
+  - `/code-review` fixes: best checkpoint; any-segmentation encoding; at least 20 lines; base not overwritten; streamed training log; missing `.lstmf` files dropped and counted; base model found via PATH with a clear error; orchestration tests with mocked tools; version 0.27.0. Left: gold pages are converted, then skipped (cached, cheap).
+  - **Own mistake, recovered:** a `git stash pop` used for a quick check applied the user's unrelated stash (`WIP on web-pdf-web-converter`) and conflicted in `fonts/anu/ocr-learning/mapping.tsv`. The file was restored to HEAD and the stash kept intact. Saved as a memory: don't use stash for checks here.
+  - `pytest`: 338 passed. `lint.cmd`: OK.
+
 ## In progress
 - None.
 
