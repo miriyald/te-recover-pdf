@@ -7,11 +7,12 @@ from anu_unicode.scan.ink import Box, Component
 
 MIN_OVERLAP = 0.3
 MAIN_OVERLAP = 0.5
-BODY_HEIGHT_RANGE = (0.7, 1.3)
 RESTING_OVERLAP = 0.5
 RESTING_DEPTH = 0.25
 BAR_HEIGHT = 0.35
 BAR_ASPECT = 2.5
+EQUALS_ALIGNMENT = 0.8
+MAJORITY_DEPTH = 3
 
 
 class Band(StrEnum):
@@ -49,12 +50,27 @@ def _overlap(first: tuple[int, int], second: tuple[int, int]) -> int:
     return min(first[1], second[1]) - max(first[0], second[0])
 
 
+def _stacked(first: Component, second: Component, stack_gap: float) -> bool:
+    horizontal = (first.bbox[0], first.bbox[2]), (second.bbox[0], second.bbox[2])
+    vertical = (first.bbox[1], first.bbox[3]), (second.bbox[1], second.bbox[3])
+    return _overlap(*horizontal) >= MIN_OVERLAP * min(first.width, second.width) and -_overlap(*vertical) <= stack_gap
+
+
 def _joined(first: Component, second: Component, word_gap: float, stack_gap: float) -> bool:
     horizontal = (first.bbox[0], first.bbox[2]), (second.bbox[0], second.bbox[2])
     vertical = (first.bbox[1], first.bbox[3]), (second.bbox[1], second.bbox[3])
     side_by_side = _overlap(*vertical) >= MIN_OVERLAP * min(first.height, second.height) and -_overlap(*horizontal) <= word_gap
-    stacked = _overlap(*horizontal) >= MIN_OVERLAP * min(first.width, second.width) and -_overlap(*vertical) <= stack_gap
-    return side_by_side or stacked
+    return side_by_side or _stacked(first, second, stack_gap)
+
+
+def _equals_pair(first: Component, second: Component, stack_gap: float) -> bool:
+    shared = _overlap((first.bbox[0], first.bbox[2]), (second.bbox[0], second.bbox[2]))
+    return shared >= EQUALS_ALIGNMENT * max(first.width, second.width) and _stacked(first, second, stack_gap)
+
+
+def _stacked_bars(components: list[Component], body_height: float, stack_gap: float) -> list[Component]:
+    bars = [component for component in components if _is_bar(component, body_height)]
+    return [stroke for stroke in bars if any(other is not stroke and _equals_pair(stroke, other, stack_gap) for other in bars)]
 
 
 def _groups(components: list[Component], word_gap: float, stack_gap: float) -> list[list[Component]]:
@@ -80,10 +96,18 @@ def _groups(components: list[Component], word_gap: float, stack_gap: float) -> l
     return list(groups.values())
 
 
-def _band(components: list[Component], body_height: float) -> tuple[int, int]:
-    low, high = BODY_HEIGHT_RANGE
-    body = [component for component in components if low * body_height <= component.height <= high * body_height] or components
-    return int(np.median([component.bbox[1] for component in body])), int(np.median([component.bbox[3] for component in body]))
+def _band(components: list[Component]) -> tuple[int, int]:
+    top = min(component.bbox[1] for component in components)
+    depth = np.zeros(max(component.bbox[3] for component in components) - top, dtype=int)
+    for component in components:
+        depth[component.bbox[1] - top:component.bbox[3] - top] += 1
+    if depth.max() < MAJORITY_DEPTH:
+        tallest = max(components, key=lambda component: component.height)
+        return tallest.bbox[1], tallest.bbox[3]
+    shared = np.concatenate(([0], (depth * 2 >= depth.max()).astype(int), [0]))
+    edges = np.flatnonzero(np.diff(shared))
+    start, end = max(zip(edges[::2], edges[1::2]), key=lambda run: int(depth[run[0]:run[1]].sum()))
+    return top + int(start), top + int(end)
 
 
 def _classify(component: Component, band: tuple[int, int]) -> Band:
@@ -123,9 +147,12 @@ def _drawing_order(placed: list[Placed]) -> tuple[Placed, ...]:
 
 
 def page_words(components: list[Component], body_height: float, word_gap: float, stack_gap: float) -> list[list[ScanWord]]:
+    equals = _stacked_bars(components, body_height, stack_gap * body_height)
+    in_equals = {id(stroke) for stroke in equals}
+    letters = [component for component in components if id(component) not in in_equals]
     words = []
-    for group in _groups(components, word_gap * body_height, stack_gap * body_height):
-        band = _band(group, body_height)
+    for group in _groups(letters, word_gap * body_height, stack_gap * body_height) + _groups(equals, 0, stack_gap * body_height):
+        band = _band(group)
         words.append(ScanWord(_drawing_order([Placed(component, _classify(component, band)) for component in group]), band))
     return _lines(words)
 

@@ -62,6 +62,25 @@ def test_a_mark_above_is_classified_above_the_band() -> None:
     assert [placed.band for placed in word.glyphs] == [Band.MAIN, Band.ABOVE]
 
 
+def test_the_band_follows_the_letters_when_body_sized_subscripts_hang_below_them() -> None:
+    letters = [_block(0, 0, 50, 65), _block(55, 2, 50, 64), _block(110, 1, 50, 66)]
+    subscripts = [_block(10, 70, 40, 32), _block(65, 72, 40, 31)]
+
+    word = page_words([*letters, *subscripts], 43.0, word_gap=0.45, stack_gap=0.3)[0][0]
+
+    assert word.band[0] <= 2 and word.band[1] >= 64
+    assert {placed.component.bbox: placed.band for placed in word.glyphs} == (
+        {letter.bbox: Band.MAIN for letter in letters} | {subscript.bbox: Band.BELOW for subscript in subscripts})
+
+
+def test_a_tick_overlapping_its_letter_in_a_two_piece_word_stays_above() -> None:
+    host, tick = _block(0, 20, 40, 50), _block(10, 0, 15, 22)
+
+    word = page_words([host, tick], BODY, word_gap=0.45, stack_gap=0.3)[0][0]
+
+    assert [placed.band for placed in word.glyphs] == [Band.MAIN, Band.ABOVE]
+
+
 def test_words_on_separate_rows_are_separate_lines_in_reading_order() -> None:
     second_line, first_line = _block(0, 200, 40, 50), _block(0, 0, 40, 50)
 
@@ -85,6 +104,23 @@ def _placed(*components: Component) -> ScanWord:
 
 def test_two_stacked_bars_are_an_equals_sign() -> None:
     assert is_equals(_placed(_block(0, 10, 60, 10), _block(0, 30, 60, 10)), BODY)
+
+
+def test_an_equals_sign_printed_tight_against_words_is_its_own_word() -> None:
+    before, upper, lower, after = _block(0, 0, 40, 50), _block(45, 15, 40, 6), _block(45, 29, 40, 6), _block(90, 0, 40, 50)
+
+    line = page_words([before, upper, lower, after], BODY, word_gap=0.45, stack_gap=0.3)[0]
+
+    assert [[placed.component for placed in word.glyphs] for word in line] == [[before], [upper, lower], [after]]
+    assert is_equals(line[1], BODY)
+
+
+def test_bars_of_different_lengths_stacked_in_a_word_are_not_pulled_out_as_equals() -> None:
+    letter, mark, rule = _block(0, 0, 60, 50), _block(10, 52, 40, 6), _block(0, 64, 120, 6)
+
+    lines = page_words([letter, mark, rule], BODY, word_gap=0.45, stack_gap=0.3)
+
+    assert not any(is_equals(word, BODY) for line in lines for word in line)
 
 
 def test_a_single_bar_or_a_letter_beside_a_bar_is_not_an_equals_sign() -> None:
