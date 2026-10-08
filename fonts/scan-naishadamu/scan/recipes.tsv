@@ -4,3 +4,7 @@ tick	∅	draft: talakattu stroke over ప, స, ఘ, హ, శ; the letter's own 
 స_base	స	draft: proposed from words (స_base tick → స, 3 votes at 100%)
 va_base	ప	draft: crops show a full ప (పదమ్, ప॥వి॥, పదార్థ)
 proabale_na_base	◌్ర	draft: the pre-base ra-vattu bracket (ప్ర, ద్ర, గ్ర, త్ర, శ్ర); ◌ marks the pre-base form so it is placed after its consonant
+pa_base	ప	draft: crops show a full ప (పర, పశ్యతః, ప్రతి, సంపద్య)
+థ_base	్థ	draft: the subscript థ-vattu below its consonant (స్థ, ర్థ: తస్థివాన్, వాక్యార్థ, పదార్థము, పురుషార్థః)
+pipe	।	danda stroke (ids 222, 225, 638, 219, seen in ।, ॥)
+pipe pipe	॥	two danda strokes side by side

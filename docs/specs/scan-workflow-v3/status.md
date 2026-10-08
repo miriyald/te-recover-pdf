@@ -199,6 +199,15 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
     Left: `mixed` acting like a name before a split (it is unspelled, so OCR is used); spacing that isn't compared (geometry sets it); a fixed 0.08 distance until a second book needs another value.
   - `pytest`: 322 passed. `lint.cmd`: OK.
 
+- **Gate 2, round 2 (2026-10-09):** the user confirmed the 5 draft recipes and reviewed 82 decisions.
+  - Two descriptive mixed names (`నే_వే` 186, `త_ద` 209) were renamed `mixed` under the agreed convention and regrouped: 186 → 3 groups, 209 → 5. Inference labelled the main groups వే, నే, ద, త.
+  - New context names, with recipes drafted from crops: `pa_base` → ప (a full ప), and `థ_base` → `్థ` (the subscript థ-vattu: స్థ, ర్థ).
+  - **The first pass dropped gold from 322 to 314** (wrong labels 3 → 13). From crops, with the user's approval:
+    - ids 222, 225, 638 and 219, named `!` or `(`, are **danda strokes**. They were renamed `pipe`, with recipes `pipe` → `।` and `pipe pipe` → `॥`.
+    - id 160, named `(`, is the **arasunna ఁ**.
+  - **Result: 325/483 (67.3%) against 298 for OCR alone.** Coverage 70.5% (749 ids), complete units 715. Misses: unlabelled 69, grouping 18, ocr overruled 6, missing 4, wrong label 4, extra 1.
+  - **Lesson for the sheet:** a reviewer sees each shape out of context and can mistake a stroke or mark for punctuation. Showing a shape's words, as the crops did here, is what settled it. That argues for word crops on the review sheet itself, not just example text.
+
 ## In progress
 - None.
 
