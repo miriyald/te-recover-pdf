@@ -7,12 +7,13 @@ from enum import StrEnum
 from itertools import groupby
 
 from anu_unicode.convert import UNMAPPED_CLOSE, UNMAPPED_OPEN
+from anu_unicode.scan.corrections import CorrectionKey
 from anu_unicode.scan.index import EQUALS, Occurrence
-from anu_unicode.scan.inference import OCR_NOISE, Label, Source, clean_ocr, comparable_text
+from anu_unicode.scan.inference import OCR_NOISE, TESSERACT_BLIND, Label, Source, clean_ocr, comparable_text, differences
 from anu_unicode.scan.ink import letter_of
 from anu_unicode.scan.names import Speller
 from anu_unicode.scan.source import SHAPE_BASE, SHAPE_LIMIT, shape_id_of
-from anu_unicode.scan.word_ocr import WordKey
+from anu_unicode.scan.word_ocr import WordKey, word_box
 
 STRONG_AGREEMENT = 0.8
 DEPENDENT_SIGNS = frozenset({"Mn", "Mc"})
@@ -25,6 +26,7 @@ PLACEHOLDER = "□"
 class Choice(StrEnum):
     AGREED = "agreed"
     REVIEWED = "reviewed"
+    CORRECTED = "corrected"
     EQUALS = "equals"
     WORD_OCR = "word_ocr"
     GAP = "gap"
@@ -59,11 +61,20 @@ def _unread_spans(text: str) -> list[str]:
 
 
 @dataclass(frozen=True)
+class BookReading:
+    labels: Mapping[int, Label]
+    speller: Speller
+    space_gap: float = 0.0
+    corrections: Mapping[CorrectionKey, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Reading:
     labels: Mapping[int, Label]
     names: Mapping[int, str]
     speller: Speller
     space: float
+    corrections: Mapping[CorrectionKey, str]
 
 
 def equals_word(items: list[Occurrence]) -> bool:
@@ -91,6 +102,9 @@ def _spelled(items: list[Occurrence], reading: Reading) -> str:
 def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> tuple[str, Choice]:
     if equals_word(items):
         return "=", Choice.EQUALS
+    place = (key[0], word_box(items))
+    if place in reading.corrections:
+        return reading.corrections[place], Choice.CORRECTED
     shape_ids = [item.shape_id for item in items]
     ocr = clean_ocr(ocr)
     ours = _spelled(items, reading)
@@ -110,12 +124,16 @@ def _choose(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, p
 
 def _ours_wins(shape_ids: list[int], reading: Reading, ours: str, ocr: str) -> Choice | None:
     labels = reading.labels
-    if comparable_text(ours) == comparable_text(ocr):
+    if _agrees_but_for_blind_letters(comparable_text(ours), comparable_text(ocr)):
         return Choice.AGREED
     reviewed = [labels[shape_id].source is Source.REVIEW for shape_id in shape_ids]
     if all(reviewed) or (any(reviewed) and ocr and _strong_neighbours(shape_ids, labels)):
         return Choice.REVIEWED
     return None
+
+
+def _agrees_but_for_blind_letters(ours: str, ocr: str) -> bool:
+    return bool(ocr) and all(not ocr_part and set(ours_part) <= TESSERACT_BLIND for ocr_part, ours_part in differences(ocr, ours))
 
 
 def _word(key: WordKey, items: list[Occurrence], reading: Reading, ocr: str, page: ScanText) -> Written:
@@ -147,11 +165,10 @@ def _joined(line: list[Written]) -> list[Written]:
     return words
 
 
-def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], labels: Mapping[int, Label], texts: Mapping[WordKey, str],
-                      speller: Speller, space_gap: float = 0.0) -> ScanText:
+def convert_scan_page(words: Mapping[WordKey, list[Occurrence]], texts: Mapping[WordKey, str], book: BookReading) -> ScanText:
     heights = [item.bbox[3] - item.bbox[1] for items in words.values() for item in items if item.shape_id != EQUALS]
-    space = space_gap * letter_of(heights) if space_gap and heights else 0.0
-    reading = Reading(labels, {shape_id: label.name for shape_id, label in labels.items()}, speller, space)
+    space = book.space_gap * letter_of(heights) if book.space_gap and heights else 0.0
+    reading = Reading(book.labels, {shape_id: label.name for shape_id, label in book.labels.items()}, book.speller, space, book.corrections)
     page = ScanText()
     for _, line in groupby(sorted(words), key=lambda key: key[:2]):
         written = (_word(key, words[key], reading, texts.get(key, ""), page) for key in line)

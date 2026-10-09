@@ -69,6 +69,32 @@ flowchart TD
 - **Model n+1** replaces model n for word readings only if it scores better on the gold pages.
 - Trainer choice: see Open questions.
 
+### 4b. Breaking the self-training plateau (after round 3)
+- **Round 3 showed two limits:**
+  - **AGREED lines are the model's own readings,** so more of them teach nothing new: 9× the data gave 6.3% → 6.2%.
+  - **Letters missing from the character set,** such as `ఁ`, can never be produced.
+- **Extended character set:** letters that confirmed lines need but the base model lacks are added to a merged unicharset. Training then runs with `--old_traineddata`, which keeps the base model's weights for letters it already knows.
+  - **The starter must use the base's recoder.** The stock `tel` model uses a pass-through recoder: 136 unicharset entries give 136 output codes. The default compressing recoder re-coded all outputs (136 → 110), wiped the output layer and gave 11.3% on gold. With `--pass_through_recoder` the codes map one to one (136 → 137) and only new letters start fresh.
+  - **The base's dictionaries are carried over** (`combine_tessdata -u`, `dawg2wordlist`, then `combine_lang_model --words/--puncs/--numbers`), so the book model keeps `tel`'s word, punctuation and number priors.
+- **Letters Tesseract cannot read do not count as disagreement.** Conversion treats our reading as agreed when its only differences from OCR are `ఁ`/`ఱ` that OCR lacks (`TESSERACT_BLIND`, already used by inference). Without this rule, all 381 book words with `ఁ` were discarded as disagreements, so `ఁ` never reached the training lines.
+- **Disagreement review:** complete words where our reading differs from the OCR reading are grouped by their difference pattern (for example `స`→`ప`) and ranked by count. A correction is entered once per word and goes into both conversion and training. These are the only lines that carry the model's real errors.
+- **Faster labelling** lets each round be redone fresh: words are read page by page into a resumable cache, and inference is profiled.
+
+```mermaid
+flowchart LR
+  L[scan-label] --> C[scan-convert]
+  C -->|AGREED / REVIEWED| T[training lines]
+  C -->|complete but disagreeing| D[disagreement sheet]
+  D -->|user corrections| K[corrections.tsv]
+  K --> C
+  K --> T
+  T --> U[merged unicharset<br/>base + needed letters]
+  U --> M[lstmtraining --old_traineddata]
+  M --> G{beats current<br/>model on gold?}
+  G -->|yes| P[profile ocr_model]
+  P --> L
+```
+
 ### 5. Measurement
 - **Three gold pages per book**, covering verse, commentary and `సమాసములు`.
 - **A misses page after every round,** with each miss tagged by cause: `grouping`, `unlabelled`, `wrong label`, `ocr passthrough`.

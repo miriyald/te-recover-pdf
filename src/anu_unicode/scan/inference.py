@@ -118,10 +118,32 @@ def candidates_for(text: str) -> list[str]:
     return [candidate for candidate in CANDIDATES if candidate == NOTHING or set(candidate) <= allowed]
 
 
+def _letter_counts(name: str, times: int = 1) -> Counter[str]:
+    return Counter() if name == NOTHING else Counter(unicodedata.normalize("NFD", name).replace(PRE_BASE, "") * times)
+
+
+def _options(word: WordEvidence, known: Mapping[int, str], unknown: Sequence[int], speller: Speller) -> Iterator[tuple[str, ...]]:
+    candidates = candidates_for(word.text)
+    recipe_names = {name for recipe in speller.recipes for name in recipe.names}
+    blank = speller.spell(word.shape_ids, {**known, **dict.fromkeys(unknown, NOTHING)})
+    if NOTHING in recipe_names or any(char in QUOTES or char.isspace() for char in blank):
+        yield from product(candidates, repeat=len(unknown))
+        return
+    needed = _letter_counts(word.text)
+    needed.subtract(_letter_counts(comparable_text(blank)))
+    times = [word.shape_ids.count(shape_id) for shape_id in unknown]
+    fitting = [[candidate for candidate in candidates if candidate in recipe_names or not _letter_counts(candidate, count) - needed]
+               for count in times]
+    for option in product(*fitting):
+        if any(candidate in recipe_names for candidate in option) or \
+                sum((_letter_counts(candidate, count) for candidate, count in zip(option, times)), Counter()) == needed:
+            yield option
+
+
 def solve(word: WordEvidence, names: Mapping[int, str], unknown: Sequence[int], speller: Speller,
           marks: frozenset[int]) -> tuple[str, ...] | None:
     known = {shape_id: names[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
-    fits = [option for option in product(candidates_for(word.text), repeat=len(unknown))
+    fits = [option for option in _options(word, known, unknown, speller)
             if render(word.shape_ids, {**known, **dict(zip(unknown, option))}, speller) == word.text]
     if len(fits) > 1:
         fits = [option for option in fits if all(label != NOTHING or shape_id in marks for shape_id, label in zip(unknown, option))]

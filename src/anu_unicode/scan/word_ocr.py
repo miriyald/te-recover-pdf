@@ -3,6 +3,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ WORD_PADDING = 10
 OCR_BORDER = 20
 OCR_WORKERS = 8
 CACHE = "scan-word-ocr.tsv"
+CACHE_COLUMNS = ("page", "left", "top", "right", "bottom", "text")
 
 WordKey = tuple[int, int, int]
 CacheKey = tuple[int, Box]
@@ -59,24 +61,43 @@ def tesseract_word(image: Image.Image, tesseract_cmd: str, model: Path | None) -
     return str(pytesseract.image_to_string(image, lang=lang, config=config))
 
 
+def _drop_partial_row(path: Path) -> None:
+    data = path.read_bytes() if path.exists() else b""
+    complete = data[:data.rfind(b"\n") + 1]
+    if not complete:
+        path.unlink(missing_ok=True)
+    elif complete != data:
+        path.write_bytes(complete)
+
+
 def _load(path: Path) -> dict[CacheKey, str]:
     return {(int(row["page"]), (int(row["left"]), int(row["top"]), int(row["right"]), int(row["bottom"]))): row.get("text", "")
             for row in read_rows(path)}
 
 
+def _read(ocr: WordOcr, ink: Bitmap, box: Box) -> str:
+    return " ".join(ocr.reader(word_image(ink, box)).split())
+
+
+def _append(path: Path, rows: Sequence[tuple[CacheKey, str]]) -> None:
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_rows(path, CACHE_COLUMNS, ())
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.writelines("\t".join(str(value) for value in (page, *box, text)) + "\n" for (page, box), text in rows)
+
+
 def read_words(words: Mapping[WordKey, list[Occurrence]], render: Callable[[int], Bitmap], ocr: WordOcr) -> dict[WordKey, str]:
+    _drop_partial_row(ocr.cache)
     cache = _load(ocr.cache)
     boxes = {key: (key[0], word_box(items)) for key, items in words.items()}
-    missing = sorted({box for box in boxes.values() if box not in cache})
-    images: list[tuple[CacheKey, Image.Image]] = []
-    for page in sorted({page for page, _ in missing}):
-        ink = render(page)
-        images.extend(((page, box), word_image(ink, box)) for number, box in missing if number == page)
+    missing: dict[int, list[Box]] = defaultdict(list)
+    for page, box in sorted({box for box in boxes.values() if box not in cache}):
+        missing[page].append(box)
     with ThreadPoolExecutor(OCR_WORKERS) as pool:
-        for cache_key, text in zip((key for key, _ in images), pool.map(lambda item: ocr.reader(item[1]), images)):
-            cache[cache_key] = " ".join(text.split())
-    if missing:
-        ocr.cache.parent.mkdir(parents=True, exist_ok=True)
-        write_rows(ocr.cache, ("page", "left", "top", "right", "bottom", "text"),
-                   ((page, *box, text) for (page, box), text in sorted(cache.items())))
+        for page, page_boxes in missing.items():
+            texts = pool.map(partial(_read, ocr, render(page)), page_boxes)
+            rows = [((page, box), text) for box, text in zip(page_boxes, texts)]
+            _append(ocr.cache, rows)
+            cache.update(rows)
     return {key: cache[box] for key, box in boxes.items()}

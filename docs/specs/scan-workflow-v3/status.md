@@ -299,11 +299,84 @@ In progress. Fine-tuning round 2 is done: `tel_ns2` gives a 6.3% letter error ra
   - **GPU, decided against for now:** with this fix the whole-book index should take about 15 minutes on the CPU, so moving it to CUDA would add a large torch dependency for little gain. Tesseract's `lstmtraining` has no GPU path. The GPU becomes worth it only if we train our own recogniser (for example a CRNN in PyTorch) once Tesseract fine-tuning stops improving.
   - `pytest`: 340 passed. `lint.cmd`: OK.
 
+- **Round 3, whole book (2026-10-09): no gain.**
+  - Index: 466 pages in 62 min, giving 399,901 pieces and 43,257 ids, of which 26,318 are singletons.
+  - Label: 3 h 20 min. Glyph coverage 83.7%; 28,748 complete words, of which 20,868 agree.
+  - `tel_ns3` trained on 20,497 lines (10,000 iterations, 21 min).
+  - Gold: letter words **279/370**, letter error rate **6.2% (163/2,637)**, against `tel_ns2` at 280/370 and 6.3%. The profile stays on `tel_ns2`.
+  - **Root cause 1:** training lines are AGREED words, whose text is the current model's own reading. Adding more of them only copies `tel_ns2`. The words it gets wrong disagree, so they never become training data.
+  - **Root cause 2:** `ఁ` is not in the `tel` character set. It is the largest single error group (about 15 of 163), and lines containing it are dropped as not encodable. `ఱ` → `బ`/`జ` adds 5 more.
+  - The rest is a long tail of 1–3 errors each (`స`→`ప`, `ై`→`ె`, inserted `య`/`శ`).
+  - Throwaway breakdown script: `docs/temp/scan-naishadamu/model_errors.py`.
+  - **Weakness found:** `read_words` holds every crop in the book in memory (about 10 GB) and writes the cache only at the end.
+
+- **User (2026-10-09):** leave the round-3 training files as they are; do A, B and C, each run fresh.
+- **C. Faster labelling (in progress):**
+  - `read_words` now crops and reads page by page and appends each page to the cache, so an interrupted run resumes. A test simulates the interruption.
+  - **Profile:** py-spy 0.4.0 crashed on Python 3.13 after 100 s, so I timed rounds directly instead. Round 1: learn 17 s. Round 2: learn 347 s and refine 46 s.
+  - **Root cause:** `learn` re-solves every word in every round (up to 30). Two unknowns cost up to c² full redraws (for `సమస్తభువనాధిపత్యమును`, c = 71, so 5,041). Words holding single-use ids never resolve and are recomputed every round.
+  - Only 5.4% of words are exact repeats, so merging duplicates would not help.
+  - **Fix:** `_State._solve` memoises on the word, the current labels of its own ids and the unknowns. `solve` is pure in exactly those inputs, so output is identical by construction. The check is that the new run must reproduce the 03:16 `scan-labels.tsv`, `recipe-proposals.tsv` and `rechecks.tsv` byte for byte.
+- **A. Extended character set (code done):**
+  - `scan-train-ocr` adds letters that at least 3 confirmed lines need but the base lacks. Steps: `known_letters` from the base unicharset, then `added_letters`, then `trainable`.
+  - It then builds `starter_model`: `unicharset_extractor --norm_mode 2`, `merge_unicharsets` and `combine_lang_model` with `--langdata` (`radical-stroke.txt` from tesseract-ocr/langdata_lstm, stored in the ignored `files/tesseract-langdata/`).
+  - Training runs with `--old_traineddata`.
+  - Hand smoke test: `ఁ` and `ఱ` come out as standalone units (138 entries, recoded size 112), and training from the resized model recovers (BCER 77% → 41% in 300 iterations).
+  - The base-encodable filter (`encodable`, `model_entries`) is removed.
+- **B. Disagreement review (code done):**
+  - `scan-disagreements --gold … --top 200` writes `scan-disagreements/disagreements.html` with word crops. Rows are grouped by OCR→ours pattern, frequent patterns first, `PER_PATTERN` = 5 words each, with noise-only patterns last.
+  - Each row has one-click "ours" / "OCR" buttons or a typed text, and exports `corrections.tsv` (page, line, word, text) into `fonts/<font>/scan/`.
+  - `Choice.CORRECTED` overrides both readings in conversion and counts as confirmed for training. Gold pages are kept off the sheet.
+
+- **C, revised.** The memo did not help: round 3 learn took 699 s, because round 2 changed most words' labels. It was removed.
+  - **Root fix:** an exact letter-count filter in `solve` (`_options`). Every candidate is a single mapped code outside any recipe, so the word's NFD letters (ignoring `◌`) are the letters of the word drawn with the unknowns as `∅`, plus the candidates' letters.
+  - Words whose `∅` drawing contains quotes or whitespace, or whose recipes use `∅`, keep the full search.
+  - Each candidate must fit in what is still needed, and a pair must add up to it exactly. Only the survivors are drawn, in the original order.
+  - **Results:**
+    - 2,815 real cases: 0 mismatches against brute force, and 47× faster (94.7 s → 2.0 s, 5,590 draws instead of 1.76 M).
+    - **Whole book: 3 h 20 min → 8.4 min.** `scan-labels.tsv`, `recipe-proposals.tsv` and `rechecks.tsv` are byte-identical to the 03:16 reference.
+    - A unit test compares `solve` with brute force for every choice of one or two unknowns, on words with recipes, punctuation, pre-base signs, repeats and quotes.
+- **B, first sheet:** 7,166 disagreeing words across the book; 200 rows and 40 patterns on the sheet.
+  - **Top patterns (OCR→ours):** `।→∅` 747, `∅→।` 354, `ై→ె` 321, `∅→ఆ` 222, `:→..` 190, `ఆ→∅` 118.
+  - Many are systematic and better fixed once, by a decision or recipe: a shape probably mislabelled `ఆ`, a missing `. .` recipe, and danda grouping. Per-word corrections are for the long tail.
+- **`/code-review` fixes:**
+  - The starter model now keeps the base's word, punctuation and number dictionaries, via `combine_tessdata -u` (unpacked once) and `dawg2wordlist` into `combine_lang_model --words/--puncs/--numbers`. Hand-checked: the dawg sizes are identical to `tel`.
+  - Tool output is decoded as UTF-8 bytes. Text mode lost stdout as `None` on Telugu output under Windows, which made the first `tel_ns4` run fail.
+  - A partial last cache row (from a kill mid-write) is dropped before loading.
+  - Corrections are keyed by page and word box, not by (page, line, word), so a regrouping cannot attach them to another word. Corrections on held-out gold pages are ignored by evaluation, training and the sheet.
+  - `NULL`, `Joined` and `|Broken|` no longer count as known letters.
+  - `convert_scan_page(words, texts, BookReading)` groups labels, speller, `space_gap` and corrections.
+- **Left as is, with reasons:**
+  - Caching recipe names and letter counts inside `_options` is unneeded: 2 s per 2,815 solves.
+  - Workers sit idle at the end of each page during word reading. That is the cost of a resumable cache; to revisit if a cold run gets noticeably slower.
+- Version 0.28.0. `pytest`: 353 passed. `lint.cmd`: OK.
+
+- **A, first `tel_ns4`: 11.3% on gold, discarded.** The training log said "Code range changed from 136 to 110". The stock `tel` uses a pass-through recoder (136 entries, 136 codes), and the starter's compressing recoder re-coded every output.
+  - **Fix:** `combine_lang_model --pass_through_recoder`. The code range now goes 136 → 137, the null character maps 2→2, and training error recovers (best 2.86%, like `tel_ns3`'s 2.74%).
+- **Why `ఁ` never reached training:** all 381 book words with `ఁ` lost to OCR as disagreements. OCR cannot produce `ఁ`, and conversion demanded an exact match.
+  - **Fix:** `_agrees_but_for_blind_letters`. Ours is agreed when its only differences are `ఁ`/`ఱ` that OCR lacks, and OCR read something.
+  - No effect on gold (identical `scan-evaluate` with the rule switched off), because the gold-page `ఁ` words are not complete on our side yet.
+- **`tel_ns4` (stock `tel` + `ఁ`, base dictionaries, pass-through, 20,704 lines, 10,000 iterations):** gold letter words **284/370**, letter error rate **6.1% (161)**, the best so far (`tel_ns2` 280 and 6.3%).
+  - `ఁ → ∅` still accounts for 14 errors: the new output exists but is undertrained, with each `ఁ` line seen about 0.5 times.
+- **`/code-review`, round 2, fixed:**
+  - An empty or headerless cache after a kill is removed and recreated.
+  - Sheet patterns show every difference, so `ర→ఱ` is no longer "noise".
+  - Empty OCR never counts as agreement.
+  - The too-few-lines check runs before any tool.
+  - Unmatched corrections are logged.
+  - Correction rows without text are skipped.
+- **Round 2, declined:**
+  - "Pass-through loses base weights": the log shows the base's code range equals its unicharset size, so pass-through is the base's own encoding.
+  - The duplicate `word_box` and converting gold pages before filtering them are minor.
+- `pytest`: 357 passed. `lint.cmd`: OK. Version 0.28.0.
+
 ## In progress
-- **Round 3:** `scan-index --write-catalog` (whole book), `scan-label`, `scan-train-ocr --name tel_ns3 --iterations 10000`. Log: `docs/temp/scan-naishadamu/round3.log`.
+- None running. The disagreement sheet (B) is ready for the user.
 
 ## Blocked / open issues
 - None.
 
-## Next steps
-- Score `tel_ns3` on gold with `model_eval.py`. If it beats `tel_ns2` (6.3%), set `ocr_model` to `tel_ns3` in the profile, re-label and evaluate.
+## Next steps (proposed)
+- **A.** Fine-tune with an extended character set (`ఁ`), using `--old_traineddata`.
+- **B.** A review sheet of words where our reading and Tesseract's disagree, grouped by pattern. Corrected words become training lines that carry the model's real errors.
+- **C.** Make labelling faster: page-by-page word reading with a resumable cache, then a profile of `solve`.

@@ -1,4 +1,4 @@
-from anu_unicode.scan.conversion import Choice, convert_scan_page, readable
+from anu_unicode.scan.conversion import BookReading, Choice, convert_scan_page, readable
 from anu_unicode.scan.index import EQUALS, Occurrence
 from anu_unicode.scan.inference import Label, Source
 from anu_unicode.scan.names import Speller
@@ -19,17 +19,46 @@ def test_each_word_takes_ours_when_it_agrees_equals_bars_become_equals_and_the_r
                    _at(2, 1, 1, 3), _at(2, 1, 2, 77)]
     texts = {(4, 1, 1): "కా", (4, 1, 3): "మ", (4, 2, 1): "'ముల"}
 
-    page = convert_scan_page(words_of(occurrences), LABELS, texts, SPELLER)
+    page = convert_scan_page(words_of(occurrences), texts, BookReading(LABELS, SPELLER))
 
     assert page.lines == ["కా = మ", "ముల"]
     assert page.choices == {Choice.AGREED: 1, Choice.EQUALS: 1, Choice.WORD_OCR: 2}
     assert page.disagreements == [((4, 1, 3), "ము", "మ")]
 
 
+def test_a_corrected_word_overrides_both_readings_and_is_not_a_disagreement() -> None:
+    occurrences = [_at(1, 1, 1, 3), _at(1, 2, 2, 1)]
+    book = BookReading(LABELS, SPELLER, corrections={(4, (50, 100, 90, 150)): "మూ"})
+
+    page = convert_scan_page(words_of(occurrences), {(4, 1, 1): "మ", (4, 1, 2): "క"}, book)
+
+    assert page.lines == ["మూ క"]
+    assert page.choices == {Choice.CORRECTED: 1, Choice.AGREED: 1}
+    assert not page.disagreements
+
+
+def test_a_letter_tesseract_cannot_read_is_no_disagreement_but_a_real_difference_still_is() -> None:
+    labels = {**LABELS, 5: Label("ఁ", Source.WORDS, 9, 1.0)}
+    occurrences = [_at(1, 1, 1, 1), _at(1, 1, 2, 2), _at(1, 1, 3, 5), _at(1, 2, 1, 3), _at(1, 2, 2, 5)]
+
+    page = convert_scan_page(words_of(occurrences), {(4, 1, 1): "కా", (4, 1, 2): "మ"}, BookReading(labels, SPELLER))
+
+    assert page.lines == ["కాఁ మ"]
+    assert page.choices == {Choice.AGREED: 1, Choice.WORD_OCR: 1}
+
+
+def test_a_word_of_only_unreadable_letters_is_not_agreed_when_ocr_read_nothing() -> None:
+    labels = {**LABELS, 5: Label("ఁ", Source.WORDS, 9, 1.0)}
+
+    page = convert_scan_page(words_of([_at(1, 1, 1, 5)]), {}, BookReading(labels, SPELLER))
+
+    assert page.choices == {Choice.UNREAD: 1}
+
+
 def test_a_word_with_a_reviewed_id_keeps_our_reading_over_word_ocr() -> None:
     labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page(words_of([_at(1, 1, 1, 3)]), labels, {(4, 1, 1): "మ"}, SPELLER)
+    page = convert_scan_page(words_of([_at(1, 1, 1, 3)]), {(4, 1, 1): "మ"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["ము"]
     assert page.choices == {Choice.REVIEWED: 1}
@@ -39,7 +68,7 @@ def test_a_word_that_starts_with_a_dependent_sign_joins_the_word_before_it() -> 
     labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
     occurrences = [_at(1, 1, 1, 1), _at(1, 2, 1, 9), _at(1, 3, 1, 3)]
 
-    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 1): "క", (4, 1, 2): "8", (4, 1, 3): "ము"}, SPELLER)
+    page = convert_scan_page(words_of(occurrences), {(4, 1, 1): "క", (4, 1, 2): "8", (4, 1, 3): "ము"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["కః ము"]
     assert [(word.keys, word.choices) for word in page.written[0]] == [
@@ -50,7 +79,7 @@ def test_a_dependent_sign_never_joins_an_equals_sign() -> None:
     labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
     occurrences = [_at(1, 1, 1, EQUALS), _at(1, 1, 2, EQUALS), _at(1, 2, 1, 9)]
 
-    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 2): "8"}, SPELLER)
+    page = convert_scan_page(words_of(occurrences), {(4, 1, 2): "8"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["= ః"]
 
@@ -59,7 +88,7 @@ def test_a_period_before_a_joined_dependent_sign_is_dropped_as_invented() -> Non
     labels = {**LABELS, 9: Label("ః", Source.REVIEW, 0, 0.0)}
     occurrences = [_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 2, 1, 9)]
 
-    page = convert_scan_page(words_of(occurrences), labels, {(4, 1, 1): "కై.", (4, 1, 2): "8"}, SPELLER)
+    page = convert_scan_page(words_of(occurrences), {(4, 1, 1): "కై.", (4, 1, 2): "8"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["కైః"]
 
@@ -67,7 +96,7 @@ def test_a_period_before_a_joined_dependent_sign_is_dropped_as_invented() -> Non
 def test_a_reviewed_id_does_not_override_ocr_when_a_neighbour_is_weak() -> None:
     labels = {1: Label("క", Source.WORDS, 2, 0.5), 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 3)]), labels, {(4, 1, 1): "కమ"}, SPELLER)
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 3)]), {(4, 1, 1): "కమ"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["కమ"]
     assert page.disagreements == [((4, 1, 1), "కము", "కమ")]
@@ -78,8 +107,8 @@ def test_a_wide_gap_inside_a_phrase_becomes_a_space_in_our_reading_when_the_book
     phrase = [Occurrence(4, 1, 1, 1, 1, Band.MAIN, (0, 0, 40, 50)), Occurrence(4, 1, 1, 2, 2, Band.MAIN, (45, 0, 85, 50)),
               Occurrence(4, 1, 1, 3, 3, Band.MAIN, (120, 0, 160, 50))]
 
-    spaced = convert_scan_page(words_of(phrase), labels, {(4, 1, 1): "కమల"}, SPELLER, space_gap=0.45)
-    joined = convert_scan_page(words_of(phrase), labels, {(4, 1, 1): "కమల"}, SPELLER)
+    spaced = convert_scan_page(words_of(phrase), {(4, 1, 1): "కమల"}, BookReading(labels, SPELLER, space_gap=0.45))
+    joined = convert_scan_page(words_of(phrase), {(4, 1, 1): "కమల"}, BookReading(labels, SPELLER))
 
     assert (spaced.lines, spaced.choices) == (["కమ ల"], {Choice.AGREED: 1})
     assert joined.lines == ["కమల"]
@@ -91,7 +120,9 @@ def test_spaces_are_measured_against_the_pages_letters_so_a_word_of_small_marks_
                for position, shape_id in ((1, 1), (2, 2), (3, 1), (4, 2))]
     marks = [Occurrence(4, 2, 1, 1, 4, Band.MAIN, (0, 100, 10, 110)), Occurrence(4, 2, 1, 2, 4, Band.MAIN, (22, 100, 32, 110))]
 
-    page = convert_scan_page(words_of([*letters, *marks]), labels, {(4, 1, 1): "కమకమ", (4, 2, 1): "ంం"}, SPELLER, space_gap=0.5)
+    texts = {(4, 1, 1): "కమకమ", (4, 2, 1): "ంం"}
+
+    page = convert_scan_page(words_of([*letters, *marks]), texts, BookReading(labels, SPELLER, space_gap=0.5))
 
     assert page.lines == ["కమకమ", "ంం"]
 
@@ -100,7 +131,7 @@ def test_a_word_tesseract_cannot_read_is_written_only_from_reviewed_ids() -> Non
     words = words_of([_at(1, 1, 1, 1), _at(1, 2, 1, 3), _at(1, 3, 1, 1)])
     labels = {**LABELS, 3: Label("ము", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page(words, labels, {(4, 1, 3): "క"}, SPELLER)
+    page = convert_scan_page(words, {(4, 1, 3): "క"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["ము క"]
     assert page.choices == {Choice.UNREAD: 1, Choice.REVIEWED: 1, Choice.AGREED: 1}
@@ -109,14 +140,14 @@ def test_a_word_tesseract_cannot_read_is_written_only_from_reviewed_ids() -> Non
 def test_a_reviewed_name_no_recipe_covers_falls_back_to_word_ocr() -> None:
     labels = {**LABELS, 4: Label("o_tick", Source.REVIEW, 0, 0.0)}
 
-    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 4)]), labels, {(4, 1, 1): "కో"}, SPELLER)
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 4)]), {(4, 1, 1): "కో"}, BookReading(labels, SPELLER))
 
     assert page.lines == ["కో"]
     assert page.choices == {Choice.WORD_OCR: 1}
 
 
 def test_an_unreadable_stretch_is_a_placeholder_box_and_its_ids_go_to_the_gaps_report() -> None:
-    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 1, 3, 78)]), LABELS, {}, SPELLER)
+    page = convert_scan_page(words_of([_at(1, 1, 1, 1), _at(1, 1, 2, 77), _at(1, 1, 3, 78)]), {}, BookReading(LABELS, SPELLER))
 
     assert page.lines == ["క□"]
     assert page.choices == {Choice.GAP: 1}

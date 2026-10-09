@@ -20,7 +20,20 @@ Stages 1–5 of `design.md`, built and measured in order. Each stage ends with a
 - [x] **4a.** (round 1 via throwaway scripts; command still to build) `scan-train-ocr`: export confirmed word crops and their text (`.png` plus `.gt.txt`), held out from gold.
 - [x] **4b.** Fine-tune `tel_best` with `lstmtraining` (CPU), then plug the model in through `--ocr-model`.
 - [x] **Gate 3.** Round 1: 8.7% → 7.5% letter error rate on gold. Score model n+1 against model n on gold, and keep it only if it is better.
-- [ ] **4c.** Optional: a GPU PyTorch recognizer, if the Tesseract model plateaus.
+- [x] **Round 3.** Whole book, 20,497 lines: `tel_ns3` scored 6.2% against `tel_ns2`'s 6.3%, so it plateaued. Causes: training lines only repeat the current model's own readings, and `ఁ` cannot be encoded (see status).
+- [x] **5 (C). Faster labelling.** Done: an exact letter-count filter in `solve` (3 h 20 min → 8.4 min, identical output) and a resumable page-by-page word cache.
+  - `read_words` reads and caches page by page, so memory holds one page and an interrupted run resumes.
+  - Profile `infer` on the whole book and fix the root cause.
+  - Results must stay identical (`scan-labels.tsv` unchanged).
+- [ ] **6 (A). Extended character set.**
+  - `scan-train-ocr` adds letters that confirmed lines need but the base model lacks (`ఁ`).
+  - Steps: build a new unicharset with `unicharset_extractor` and `merge_unicharsets`, make a starter model with `combine_lang_model`, then `lstmtraining --old_traineddata`.
+  - Fresh model `tel_ns4`, kept only if it beats `tel_ns2` on gold.
+- [~] **7 (B). Disagreement review.** Sheet built (`scan-disagreements`), waiting for the user's corrections.
+  - A sheet of complete words where our reading and the OCR reading differ, grouped by their difference pattern and ranked by count.
+  - The user corrects words. The corrected words feed conversion (as human-confirmed) and become training lines for the next model (`tel_ns5`).
+- [ ] **Gate 4.** Score `tel_ns4` and `tel_ns5` on gold against `tel_ns2`.
+- [ ] **4c.** Optional: a GPU PyTorch recognizer. It only helps once the training data carries errors (step 7), because the model is not the limit.
 
 ## Risks & mitigations
 - **Re-expressing the gap constants changes Prasaaskhara.** Mitigation: the page-51 check on every change, with its round-5 state archived at `files/<book>/archive/2026-10-07-round5/`.
