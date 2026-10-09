@@ -1,8 +1,8 @@
 # Status: Scan workflow v3
-_Last updated: 2026-10-07_
+_Last updated: 2026-10-08_
 
 ## Current state
-In progress. Step 0 (measurement base) is done. All three gold pages are confirmed by the user; next is step 1a.
+In progress. Fine-tuning round 2 is done: `tel_ns2` gives a 6.3% letter error rate on gold. Round 3 (whole-book index, then label, then train `tel_ns3`) is running.
 
 ## Completed
 - The pilot work was committed and opened as draft PR #3, stacked on #2.
@@ -287,12 +287,23 @@ In progress. Step 0 (measurement base) is done. All three gold pages are confirm
   - `/code-review` fixes: best checkpoint; any-segmentation encoding; at least 20 lines; base not overwritten; streamed training log; missing `.lstmf` files dropped and counted; base model found via PATH with a clear error; orchestration tests with mocked tools; version 0.27.0. Left: gold pages are converted, then skipped (cached, cheap).
   - **Own mistake, recovered:** a `git stash pop` used for a quick check applied the user's unrelated stash (`WIP on web-pdf-web-converter`) and conflicted in `fonts/anu/ocr-learning/mapping.tsv`. The file was restored to HEAD and the stash kept intact. Saved as a memory: don't use stash for checks here.
   - `pytest`: 338 passed. `lint.cmd`: OK.
+- **Faster shape matching, same output (0.27.1).** The user asked to use the GPU. A profile showed the index was not compute-bound: matching took 14 s per page and reading a page 0.7 s.
+  - `GridPrototypes.add` used `np.vstack`. Every new shape copied three float64 arrays of 6,500 × 2,304 values each (about 360 MB): 27% of the time.
+  - `stray_share` multiplied float64 0/1 matrices: 37% of the time.
+  - `thick_difference` built and labelled all 9 shifted layers even when the first layer settles the answer.
+  - **Fix:**
+    - prototypes stored as packed bits (popcount) in buffers that double in size, read through views limited to `size`;
+    - running sums kept only for ids that are not frozen;
+    - thick layers computed lazily, nearest shift first, stopping at the first small blob.
+  - **Verified on pages 330–335 against HEAD:** identical assignments (md5 of every page, bbox and id) and a byte-identical saved catalog. Matching went from 121.8 s to 6.8 s (18×). A unit test checks `stray_share` against the old float distance-map formula.
+  - **GPU, decided against for now:** with this fix the whole-book index should take about 15 minutes on the CPU, so moving it to CUDA would add a large torch dependency for little gain. Tesseract's `lstmtraining` has no GPU path. The GPU becomes worth it only if we train our own recogniser (for example a CRNN in PyTorch) once Tesseract fine-tuning stops improving.
+  - `pytest`: 340 passed. `lint.cmd`: OK.
 
 ## In progress
-- None.
+- **Round 3:** `scan-index --write-catalog` (whole book), `scan-label`, `scan-train-ocr --name tel_ns3 --iterations 10000`. Log: `docs/temp/scan-naishadamu/round3.log`.
 
 ## Blocked / open issues
 - None.
 
 ## Next steps
-- **Gate 2:** the user reviews `files/sriharsha-naishadamu/output/intermediate/scan-review/review.html` (50 rows) and saves `decisions.tsv` (and any `recipes.tsv`) to `fonts/scan-naishadamu/scan/`; then re-label and measure on gold.
+- Score `tel_ns3` on gold with `model_eval.py`. If it beats `tel_ns2` (6.3%), set `ocr_model` to `tel_ns3` in the profile, re-label and evaluate.
