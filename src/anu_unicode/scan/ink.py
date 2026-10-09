@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -48,3 +49,12 @@ def find_components(ink: Bitmap, min_area: int) -> list[Component]:
 
 def median_height(components: list[Component]) -> float:
     return float(np.median([component.height for component in components]))
+
+
+def letter_of(heights: Sequence[int]) -> float:
+    median = np.median(heights)
+    return float(np.median([height for height in heights if height >= median]))
+
+
+def letter_height(components: list[Component]) -> float:
+    return letter_of([component.height for component in components])

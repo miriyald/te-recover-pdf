@@ -10,7 +10,7 @@ from PIL import Image
 from anu_unicode.scan.catalog import GRID, ShapeCatalog, shape_of
 from anu_unicode.scan.ink import Bitmap, Box
 from anu_unicode.scan.page import ScanPage
-from anu_unicode.scan.words import Band, Placed, is_equals
+from anu_unicode.scan.words import Band, Placed
 
 MEMBER_CROPS = 16
 SAMPLE_SEED = 0
@@ -62,7 +62,7 @@ class ShapeIndex:
         before = len(self.catalog)
         for line_number, line in enumerate(page.lines, start=1):
             for word_number, word in enumerate(line, start=1):
-                equals = is_equals(word, page.body_height)
+                equals = word.equals
                 for position, placed in enumerate(word.glyphs, start=1):
                     shape_id = EQUALS if equals else self._shape_id(page, placed)
                     self.occurrences.append(Occurrence(page.number, line_number, word_number, position, shape_id, placed.band,

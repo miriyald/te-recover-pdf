@@ -49,7 +49,7 @@ def test_equals_bars_get_no_catalog_id_and_stay_out_of_the_statistics(tmp_path: 
     index = ShapeIndex(ShapeCatalog(Thresholds(0.15, 0.2, 0.25)))
     stroke = np.ones((10, 60), dtype=bool)
     top, bottom = Placed(Component((0, 10, 60, 20), stroke), Band.MAIN), Placed(Component((0, 30, 60, 40), stroke), Band.MAIN)
-    equals = ScanWord((top, bottom), (0, 50))
+    equals = ScanWord((top, bottom), (0, 50), equals=True)
 
     index.add(ScanPage(4, 50.0, [[equals, _word(np.ones((50, 50), dtype=bool))]]))
     stats = write_index(tmp_path, index)

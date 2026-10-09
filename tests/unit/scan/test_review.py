@@ -26,6 +26,23 @@ def test_flagged_ids_come_first_then_the_rest_by_count() -> None:
     assert [(row.shape_id, row.flagged) for row in rows] == [(4, True), (2, True), (3, True), (1, False)]
 
 
+def test_the_id_that_completes_the_most_words_comes_first_even_if_another_is_more_frequent() -> None:
+    occurrences = ([_occurrence(1, word=1), _occurrence(9, word=1, position=2), _occurrence(1, word=2), _occurrence(9, word=2, position=2)]
+                   + [_occurrence(3, word=3), _occurrence(4, word=3, position=2)] * 3)
+
+    rows = review_rows(ReviewInput(occurrences, {9: _label("క")}), top=10)
+
+    assert [(row.shape_id, row.completes) for row in rows] == [(1, 2), (3, 0), (4, 1), (9, 0)]
+
+
+def test_completion_is_recounted_after_each_pick_so_a_partner_id_gains_from_it() -> None:
+    occurrences = [_occurrence(6, word=2), _occurrence(6, word=3), _occurrence(5, word=1), _occurrence(6, word=1, position=2)]
+
+    rows = review_rows(ReviewInput(occurrences, {}), top=10)
+
+    assert [(row.shape_id, row.completes) for row in rows] == [(6, 2), (5, 1)]
+
+
 def test_a_mark_meaning_nothing_is_not_flagged() -> None:
     rows = review_rows(ReviewInput([_occurrence(4)], {4: _label(NOTHING)}, marks=frozenset({4})), top=10)
 
@@ -66,6 +83,14 @@ def test_the_sheet_prefills_names_lists_rechecks_and_proposals_and_keeps_earlier
     assert '{"3": "ఁ"}' in page
     assert '[["ె ai", "ై", "tail"]]' in page
     assert "decisions.tsv" in page and "recipes.tsv" in page
+
+
+def test_a_row_shows_how_many_more_words_are_complete_once_it_and_the_rows_above_are_decided(tmp_path: Path) -> None:
+    rows = review_rows(ReviewInput([_occurrence(6, word=1), _occurrence(6, word=2)], {}), top=10)
+
+    write_review(tmp_path / "review.html", Sheet(rows), "../scan-index/shapes")
+
+    assert "<td>2 · +2 with rows above</td>" in (tmp_path / "review.html").read_text(encoding="utf-8")
 
 
 def test_decisions_are_read_by_shape_id(tmp_path: Path) -> None:

@@ -1,14 +1,18 @@
 import argparse
+import base64
+import io
 import logging
+import re
 import shutil
 from collections import Counter
-from collections.abc import Callable
-from dataclasses import replace
+from collections.abc import Callable, Sequence
+from dataclasses import astuple, dataclass, replace
 from functools import cache
 from itertools import groupby
 from pathlib import Path
 
 import pymupdf
+from PIL import Image
 
 from anu_unicode.command_support import page_range, requested_pages
 from anu_unicode.convert import UNMAPPED_OPEN
@@ -16,32 +20,73 @@ from anu_unicode.mapping import write_rows
 from anu_unicode.scan.ambiguity import Verdict, check_index, write_ambiguity
 from anu_unicode.scan.catalog import Shape, ShapeCatalog, Thresholds, load_catalog, shape_of
 from anu_unicode.scan.checks import check_decisions, write_rechecks
-from anu_unicode.scan.conversion import Choice, convert_scan_page
+from anu_unicode.scan.conversion import BookReading, Choice, ScanText, convert_scan_page, equals_word
+from anu_unicode.scan.corrections import PER_PATTERN, CorrectionKey, place_name, ranked, read_corrections, write_disagreements
+from anu_unicode.scan.evaluation import Errors, Miss, Score, score_page, write_misses, write_scores
 from anu_unicode.scan.glyph_ocr import GlyphOcr, largest_component, propose, tesseract_glyph
 from anu_unicode.scan.index import Occurrence, ShapeIndex, previous_assignments, write_index, write_occurrences
 from anu_unicode.scan.inference import Label, WordEvidence, infer, marks_of, read_labels, render, seed_labels, word_evidence, write_labels
-from anu_unicode.scan.ink import Bitmap, Component, find_components, median_height, render_ink
+from anu_unicode.scan.ink import Bitmap, Component, find_components, render_ink
 from anu_unicode.scan.names import Speller, is_symbolic, validate_recipes
+from anu_unicode.scan.ocr_fixes import fix_text, load_fixes
+from anu_unicode.scan.ocr_training import (
+    LANGDATA_URL,
+    MIN_LINES,
+    RADICAL_STROKE,
+    Tools,
+    Training,
+    added_letters,
+    confirmed_lines,
+    known_letters,
+    make_lstmf,
+    starter_model,
+    train,
+    trainable,
+    unpack,
+    write_lines,
+)
 from anu_unicode.scan.page import MIN_AREA, ScanPage, scan_page
+from anu_unicode.scan.profile import ScanProfile, load_scan_profile, unit_height
 from anu_unicode.scan.recipes import propose_recipes, write_proposals
 from anu_unicode.scan.review import ReviewInput, Sheet, read_decisions, review_rows, write_review
 from anu_unicode.scan.source import read_occurrences
-from anu_unicode.scan.split import Division, divide, find_mixed, readings
-from anu_unicode.scan.word_ocr import WordKey, WordOcr, read_words, tesseract_word, words_of
+from anu_unicode.scan.split import MIXED, Division, Mixed, divide, find_mixed, readings, subclusters
+from anu_unicode.scan.word_ocr import WordKey, WordOcr, ocr_cache_name, read_words, tesseract_word, word_box, word_image, words_of
 from anu_unicode.shape_naming.shapes import load_recipes
 
 logger = logging.getLogger(__name__)
 SCAN = "[scanned books]"
 ASSIGNMENTS = "scan-occurrences.tsv"
-WORD_OCR = "scan-word-ocr.tsv"
 GLYPH_OCR = "scan-glyph-ocr.tsv"
 LABELS = "scan-labels.tsv"
+GOLD_FILE = re.compile(r"page-(\d+)\.txt")
+CROP_SIZE = (900, 140)
 
 
-def _catalog(arguments: argparse.Namespace) -> ShapeCatalog:
+class CatalogUnitError(ValueError):
+    pass
+
+
+def existing_file(value: str) -> Path:
+    path = Path(value)
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(f"no such file: {path}")
+    return path
+
+
+def checked_catalog(path: Path, profile: ScanProfile) -> ShapeCatalog:
+    catalog = load_catalog(path)
+    if catalog.shape_unit != profile.shape_unit:
+        raise CatalogUnitError(f"{path} holds shapes scaled by {catalog.shape_unit} height but the profile says {profile.shape_unit};"
+                               " run scan-index with --rebuild")
+    return catalog
+
+
+def _catalog(arguments: argparse.Namespace, profile: ScanProfile) -> ShapeCatalog:
     if arguments.catalog.exists() and not arguments.rebuild:
-        return load_catalog(arguments.catalog)
-    return ShapeCatalog(Thresholds(arguments.max_stray, arguments.max_height_drift, arguments.max_aspect_drift))
+        return checked_catalog(arguments.catalog, profile)
+    thresholds = Thresholds(arguments.max_stray, arguments.max_height_drift, arguments.max_aspect_drift)
+    return ShapeCatalog(thresholds, shape_unit=profile.shape_unit)
 
 
 def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: list[ScanPage]) -> None:
@@ -56,10 +101,11 @@ def _report_ambiguity(arguments: argparse.Namespace, index: ShapeIndex, pages: l
 
 def _scan_index(arguments: argparse.Namespace) -> None:
     document = pymupdf.open(arguments.pdf)
-    pages = [scan_page(document[number - 1], number) for number in requested_pages(arguments, document)]
+    profile = load_scan_profile(arguments.scan_profile)
+    pages = [scan_page(document[number - 1], number, profile) for number in requested_pages(arguments, document)]
     assigned = arguments.layout.state / ASSIGNMENTS
     previous = previous_assignments(read_occurrences(assigned)) if not arguments.rebuild else {}
-    index = ShapeIndex(_catalog(arguments), previous)
+    index = ShapeIndex(_catalog(arguments, profile), previous)
     for page in pages:
         index.add(page)
     out = arguments.layout.intermediate("scan-index")
@@ -88,9 +134,29 @@ def _renderer(arguments: argparse.Namespace) -> Callable[[int], Bitmap]:
     return page_ink
 
 
+def _raw_texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
+    model = _ocr_model(arguments)
+    stored = arguments.layout.state / ocr_cache_name(model)
+    return read_words(words, ink, WordOcr(lambda image: tesseract_word(image, arguments.tesseract, model), stored))
+
+
+def _ocr_model(arguments: argparse.Namespace) -> Path | None:
+    name = load_scan_profile(arguments.scan_profile).ocr_model
+    if not name:
+        return None
+    model: Path = arguments.layout.state / "ocr" / f"{name}.traineddata"
+    if not model.is_file():
+        raise FileNotFoundError(f"the scan profile names OCR model {name!r}, but {model} does not exist")
+    return model
+
+
+def _fixed(arguments: argparse.Namespace, texts: dict[WordKey, str]) -> dict[WordKey, str]:
+    fixes = load_fixes(arguments.ocr_fixes)
+    return {key: fix_text(text, fixes) for key, text in texts.items()} if fixes else texts
+
+
 def _texts(arguments: argparse.Namespace, words: dict[WordKey, list[Occurrence]], ink: Callable[[int], Bitmap]) -> dict[WordKey, str]:
-    ocr = WordOcr(lambda image: tesseract_word(image, arguments.tesseract), arguments.layout.state / WORD_OCR)
-    return read_words(words, ink, ocr)
+    return _fixed(arguments, _raw_texts(arguments, words, ink))
 
 
 def _speller(arguments: argparse.Namespace, decisions: dict[int, str]) -> Speller:
@@ -152,19 +218,20 @@ def _scan_review(arguments: argparse.Namespace) -> None:
 
 def _member_shapes(arguments: argparse.Namespace, items: list[Occurrence]) -> dict[Occurrence, Shape]:
     document = pymupdf.open(arguments.pdf)
+    shape_unit = load_scan_profile(arguments.scan_profile).shape_unit
     shapes: dict[Occurrence, Shape] = {}
     for page, on_page in groupby(sorted(items, key=lambda item: item.page), key=lambda item: item.page):
         ink = render_ink(document[page - 1])
-        body_height = median_height(find_components(ink, MIN_AREA))
+        body_height = unit_height(find_components(ink, MIN_AREA), shape_unit)
         for item in on_page:
             shapes[item] = shape_of(Component(item.bbox, largest_component(ink, item.bbox)), item.band, body_height)
     return shapes
 
 
-def _apply_splits(arguments: argparse.Namespace, divisions: list[Division], shapes: dict[Occurrence, Shape]) -> dict[int, int]:
+def _apply_moves(arguments: argparse.Namespace, groups: list[Sequence[Occurrence]], shapes: dict[Occurrence, Shape]) -> list[int]:
     catalog = load_catalog(arguments.catalog)
-    new_ids = {division.mixed.shape_id: catalog.add_shapes([shapes[item] for item in division.move]) for division in divisions}
-    moved = {(item.page, item.bbox): new_ids[division.mixed.shape_id] for division in divisions for item in division.move}
+    new_ids = [catalog.add_shapes([shapes[item] for item in group]) for group in groups]
+    moved = {(item.page, item.bbox): new_id for group, new_id in zip(groups, new_ids) for item in group}
     assigned = arguments.layout.state / ASSIGNMENTS
     write_occurrences(assigned, [replace(item, shape_id=moved.get((item.page, item.bbox), item.shape_id))
                                  for item in read_occurrences(assigned)])
@@ -172,52 +239,211 @@ def _apply_splits(arguments: argparse.Namespace, divisions: list[Division], shap
     return new_ids
 
 
-def _scan_split(arguments: argparse.Namespace) -> None:
-    occurrences = read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv")
+SplitPlan = tuple[list[tuple[Mixed, Division | None]], dict[int, list[list[Occurrence]]], dict[Occurrence, Shape]]
+
+
+def _split_plan(arguments: argparse.Namespace, occurrences: list[Occurrence]) -> SplitPlan:
     words = words_of(occurrences)
     decisions, labels = read_decisions(arguments.decisions), read_labels(arguments.layout.state / LABELS)
     by_id = readings(words, _texts(arguments, words, _renderer(arguments)), labels, _speller(arguments, decisions), marks_of(occurrences))
-    mixed = find_mixed(by_id, labels)
-    wanted = {candidate.shape_id for candidate in mixed}
+    marked = sorted(shape_id for shape_id, name in decisions.items() if name == MIXED)
+    mixed = [candidate for candidate in find_mixed(by_id, labels) if candidate.shape_id not in marked]
+    wanted = {candidate.shape_id for candidate in mixed} | set(marked)
     shapes = _member_shapes(arguments, [item for item in occurrences if item.shape_id in wanted])
     outcomes = [(candidate, divide(candidate, {item: shape.canvas for item, shape in shapes.items() if item.shape_id == candidate.shape_id},
                                    by_id[candidate.shape_id])) for candidate in mixed]
-    divisions = [division for _, division in outcomes if division]
-    new_ids = _apply_splits(arguments, divisions, shapes) if arguments.apply else {}
+    found = {shape_id: subclusters({item: shape for item, shape in shapes.items() if item.shape_id == shape_id}) for shape_id in marked}
+    return outcomes, {shape_id: groups for shape_id, groups in found.items() if len(groups) > 1}, shapes
+
+
+def _scan_split(arguments: argparse.Namespace) -> None:
+    outcomes, regrouped, shapes = _split_plan(arguments, read_occurrences(arguments.layout.intermediate("scan-index") / "occurrences.tsv"))
+    divisions = [division for _, division in outcomes if division and division.move]
+    groups: list[Sequence[Occurrence]] = [division.move for division in divisions]
+    groups += [group for found in regrouped.values() for group in found]
+    assigned: list[int | str] = [*_apply_moves(arguments, groups, shapes)] if arguments.apply else [""] * len(groups)
+    new_ids = iter(assigned)
+    split_ids = {division.mixed.shape_id: next(new_ids) for division in divisions}
+    regrouped_ids = {shape_id: [next(new_ids) for _ in found] for shape_id, found in regrouped.items()}
+    _split_report(arguments, [(candidate, division, split_ids.get(candidate.shape_id, "")) for candidate, division in outcomes],
+                  {shape_id: (found, regrouped_ids[shape_id]) for shape_id, found in regrouped.items()})
+
+
+def _split_report(arguments: argparse.Namespace, outcomes: list[tuple[Mixed, Division | None, int | str]],
+                  regrouped: dict[int, tuple[list[list[Occurrence]], list[int | str]]]) -> None:
     out = arguments.layout.intermediate("scan-split")
     out.mkdir(parents=True, exist_ok=True)
-    write_rows(out / "splits.tsv", ("shape_id", "keep", "other", "kept_words", "other_words", "outcome", "moved", "new_id"),
-               ((candidate.shape_id, candidate.keep, candidate.other, candidate.kept, candidate.other_count,
-                 "split" if division else "same_look", len(division.move) if division else 0, new_ids.get(candidate.shape_id, ""))
-                for candidate, division in outcomes))
-    logger.info("mixed shape ids checked", extra={"mixed": len(mixed), "split": len(divisions), "same_look": len(mixed) - len(divisions),
-                                                  "moved": sum(len(division.move) for division in divisions), "applied": arguments.apply,
-                                                  "report": str(out / "splits.tsv")})
+    rows = [(candidate.shape_id, candidate.keep, candidate.other, candidate.kept, candidate.other_count,
+             "split" if division else "same_look", len(division.move) if division else 0, new_id)
+            for candidate, division, new_id in outcomes]
+    rows += [(shape_id, MIXED, "", len(found[0]), sum(len(group) for group in found[1:]), f"regrouped into {len(found)}",
+              sum(len(group) for group in found), ",".join(str(new_id) for new_id in new_ids))
+             for shape_id, (found, new_ids) in regrouped.items()]
+    write_rows(out / "splits.tsv", ("shape_id", "keep", "other", "kept_words", "other_words", "outcome", "moved", "new_id"), rows)
+    divisions = [division for _, division, _ in outcomes if division]
+    moved = sum(len(division.move) for division in divisions) + sum(len(group) for found, _ in regrouped.values() for group in found)
+    logger.info("mixed shape ids checked", extra={
+        "mixed": len(outcomes), "split": len(divisions), "same_look": len(outcomes) - len(divisions), "marked_mixed": len(regrouped),
+        "groups": sum(len(found) for found, _ in regrouped.values()), "moved": moved, "applied": arguments.apply,
+        "report": str(out / "splits.tsv")})
+
+
+@dataclass(frozen=True)
+class Conversion:
+    words: dict[WordKey, list[Occurrence]]
+    raw_texts: dict[WordKey, str]
+    texts: dict[WordKey, str]
+    ink: Callable[[int], Bitmap]
+    pages: list[tuple[int, dict[WordKey, list[Occurrence]], ScanText]]
+
+
+def _warn_unmatched(path: Path, corrections: dict[CorrectionKey, str], words: dict[WordKey, list[Occurrence]]) -> None:
+    places = {(key[0], word_box(items)) for key, items in words.items()}
+    pages_read = {page for page, _ in places}
+    unmatched = [place for place in corrections if place[0] in pages_read and place not in places]
+    if unmatched:
+        logger.warning("corrections match no word; their words were regrouped", extra={
+            "unmatched": len(unmatched), "first": place_name(unmatched[0]), "corrections": str(path)})
+
+
+def _conversion(arguments: argparse.Namespace, pages: list[int] | None, held_out: frozenset[int] = frozenset()) -> Conversion:
+    words = words_of(_occurrences(arguments, pages))
+    ink = _renderer(arguments)
+    raw_texts = _raw_texts(arguments, words, ink)
+    texts = _fixed(arguments, raw_texts)
+    corrections = {place: text for place, text in read_corrections(arguments.corrections).items() if place[0] not in held_out}
+    _warn_unmatched(arguments.corrections, corrections, words)
+    book = BookReading(read_labels(arguments.layout.state / LABELS), _speller(arguments, read_decisions(arguments.decisions)),
+                       load_scan_profile(arguments.scan_profile).space_gap, corrections)
+    converted = []
+    for number in sorted({key[0] for key in words}):
+        page_words = {key: items for key, items in words.items() if key[0] == number}
+        page = convert_scan_page(page_words, texts, book)
+        converted.append((number, page_words, page))
+    return Conversion(words, raw_texts, texts, ink, converted)
 
 
 def _scan_convert(arguments: argparse.Namespace) -> None:
-    occurrences = _occurrences(arguments, arguments.pages)
-    words = words_of(occurrences)
-    texts = _texts(arguments, words, _renderer(arguments))
-    labels = read_labels(arguments.layout.state / LABELS)
-    speller = _speller(arguments, read_decisions(arguments.decisions))
+    conversion = _conversion(arguments, arguments.pages)
     out = arguments.layout.intermediate("scan-convert")
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     choices: Counter[Choice] = Counter()
     pages: list[str] = []
     disagreements: list[tuple[int, int, int, str, str]] = []
-    for number in sorted({key[0] for key in words}):
-        page = convert_scan_page({key: items for key, items in words.items() if key[0] == number}, labels, texts, speller)
+    gaps: list[tuple[int, int, int, str]] = []
+    for number, _, page in conversion.pages:
         text = "\n".join(page.lines)
         (out / f"page-{number}.unicode.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
         pages.append(text)
         choices.update(page.choices)
         disagreements.extend((*key, ours, ocr) for key, ours, ocr in page.disagreements)
+        gaps.extend((*key, missing) for key, missing in page.gaps)
     (out / "book.txt").write_text("\n\f".join(pages) + "\n", encoding="utf-8", newline="\n")
     write_rows(out / "disagreements.tsv", ("page", "line", "word", "ours", "word_ocr"), disagreements)
+    write_rows(out / "gaps.tsv", ("page", "line", "word", "missing"), gaps)
     logger.info("scan conversion done", extra={"pages": len(pages), "choices": {choice.value: count for choice, count in choices.items()},
-                                               "disagreements": len(disagreements), "out": str(out)})
+                                               "disagreements": len(disagreements), "gaps": len(gaps), "out": str(out)})
+
+
+def gold_folder(value: str) -> dict[int, str]:
+    folder = Path(value)
+    pages = {int(match.group(1)): path.read_text(encoding="utf-8")
+             for path in sorted(folder.glob("page-*.txt")) if (match := GOLD_FILE.fullmatch(path.name))}
+    if not pages:
+        raise argparse.ArgumentTypeError(f"no page-<number>.txt files in {folder}")
+    return pages
+
+
+def _crop(ink: Bitmap, boxes: list[tuple[int, int, int, int]]) -> str:
+    merged = min(box[0] for box in boxes), min(box[1] for box in boxes), max(box[2] for box in boxes), max(box[3] for box in boxes)
+    image = word_image(ink, merged)
+    image.thumbnail(CROP_SIZE)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def _ocr_alone(words: dict[WordKey, list[Occurrence]], texts: dict[WordKey, str]) -> str:
+    return " ".join("=" if equals_word(words[key]) else texts.get(key, "") for key in sorted(words))
+
+
+def _totals(name: str, scores: Sequence[Score | Errors]) -> dict[str, int]:
+    return {f"{name}_total": sum(astuple(score)[0] for score in scores), f"{name}_ours": sum(score.ours for score in scores),
+            f"{name}_ocr": sum(score.ocr for score in scores)}
+
+
+def _scan_evaluate(arguments: argparse.Namespace) -> None:
+    golds: dict[int, str] = arguments.gold
+    conversion = _conversion(arguments, sorted(golds), held_out=frozenset(golds))
+    scores = [score_page(number, golds[number], converted, _ocr_alone(page_words, conversion.raw_texts), conversion.raw_texts)
+              for number, page_words, converted in conversion.pages]
+    out = arguments.layout.intermediate("scan-evaluate")
+    write_scores(out / "scores.tsv", scores)
+
+    def miss_crop(miss: Miss) -> str | None:
+        return _crop(conversion.ink(miss.page), [word_box(conversion.words[key]) for key in miss.keys]) if miss.keys else None
+    write_misses(out / "misses.html", scores, miss_crop)
+    logger.info("scan evaluation done", extra={
+        "pages": [score.page for score in scores], "missing_pages": sorted(set(golds) - {score.page for score in scores}),
+        **_totals("words", [score.words for score in scores]), **_totals("letter_words", [score.letter_words for score in scores]),
+        **_totals("letter_errors", [score.letter_errors for score in scores]),
+        "causes": dict(Counter(miss.cause.value for score in scores for miss in score.misses)), "out": str(out)})
+
+
+def _training_lines(arguments: argparse.Namespace, known: set[str]) -> tuple[list[tuple[str, Image.Image, str]], set[str]]:
+    conversion = _conversion(arguments, None, held_out=frozenset(arguments.gold))
+    confirmed = [(number, page_words, line) for number, page_words, page in conversion.pages if number not in arguments.gold
+                 for line in confirmed_lines(page)]
+    added = added_letters((line.text for _, _, line in confirmed), known)
+    lines = []
+    for number, page_words, line in confirmed:
+        if trainable(line.text, known, added):
+            box = word_box([item for key in line.keys for item in page_words[key]])
+            lines.append((f"p{number}-{line.keys[0][1]:02}-{line.keys[0][2]:02}", word_image(conversion.ink(number), box), line.text))
+    return lines, added
+
+
+def _scan_disagreements(arguments: argparse.Namespace) -> None:
+    conversion = _conversion(arguments, None, held_out=frozenset(arguments.gold))
+    disagreements = [found for number, _, page in conversion.pages if number not in arguments.gold for found in page.disagreements]
+    rows = ranked(disagreements, {key: word_box(conversion.words[key]) for key, _, _ in disagreements}, arguments.top)
+    out = arguments.layout.intermediate("scan-disagreements")
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "words").mkdir(parents=True)
+    for page, on_page in groupby(sorted((word.place for word, _ in rows)), key=lambda place: place[0]):
+        ink = conversion.ink(page)
+        for place in on_page:
+            word_image(ink, place[1]).save(out / "words" / f"{place_name(place)}.png")
+    write_disagreements(out / "disagreements.html", rows, read_corrections(arguments.corrections), "words")
+    logger.info("scan disagreement sheet written", extra={
+        "disagreements": len(disagreements), "rows": len(rows), "patterns": len({word.pattern for word, _ in rows}),
+        "path": str(out / "disagreements.html"), "save_export_as": str(arguments.corrections)})
+
+
+def _scan_train_ocr(arguments: argparse.Namespace) -> None:
+    tesseract = Path(shutil.which(arguments.tesseract) or arguments.tesseract)
+    base = arguments.base_model or tesseract.parent / "tessdata" / "tel.traineddata"
+    if not base.is_file():
+        raise FileNotFoundError(f"no base model at {base}; pass --base-model")
+    if not (arguments.langdata / RADICAL_STROKE).is_file():
+        raise FileNotFoundError(f"no {RADICAL_STROKE} in {arguments.langdata}; download it from {LANGDATA_URL} or pass --langdata")
+    folder = arguments.layout.state / "ocr" / "train" / arguments.name
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    training = Training(Tools(tesseract), base, folder)
+    unpack(training)
+    lines, added = _training_lines(arguments, known_letters(training))
+    if len(lines) < MIN_LINES:
+        raise ValueError(f"only {len(lines)} confirmed lines; at least {MIN_LINES} are needed")
+    starter = starter_model(training, [text for _, _, text in lines], arguments.name, arguments.langdata)
+    images = write_lines(folder, lines)
+    lstmf = make_lstmf(training, images)
+    output = train(training, starter, lstmf, arguments.layout.state / "ocr" / f"{arguments.name}.traineddata", arguments.iterations)
+    logger.info("scan OCR model trained", extra={
+        "lines": len(lines), "dropped": len(images) - len(lstmf), "added_letters": "".join(sorted(added)),
+        "held_out_pages": sorted(arguments.gold), "base": str(base), "iterations": arguments.iterations, "model": str(output),
+        "log": str(folder / "training.log")})
 
 
 def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
@@ -227,6 +453,8 @@ def _pages_option(parser: argparse.ArgumentParser, default: str) -> None:
 def _decisions_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--decisions", type=Path, help="reviewed shape names; default fonts/<font>/scan/decisions.tsv")
     parser.add_argument("--recipes", dest="scan_recipes", type=Path, help="name sequences to text; default fonts/<font>/scan/recipes.tsv")
+    parser.add_argument("--ocr-fixes", type=Path, help="whole-token OCR fixes; default fonts/<font>/scan/ocr-fixes.tsv")
+    parser.add_argument("--corrections", type=Path, help="reviewed word texts; default fonts/<font>/scan/corrections.tsv")
 
 
 def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -234,6 +462,7 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     _pages_option(index, "whole PDF")
     index.add_argument("--catalog", type=Path, help="shape catalog to extend; default files/<book>/state/scan-catalog.npz")
     index.add_argument("--rebuild", action="store_true", help="ignore an existing catalog and cluster from scratch")
+    index.add_argument("--scan-profile", type=existing_file, help="grouping units and thresholds; default fonts/<font>/scan/profile.json")
     index.add_argument("--write-catalog", action="store_true", help="save the catalog so later runs keep these shape ids")
     index.add_argument("--max-stray", type=float, default=0.2, help="pre-filter: share of ink further than 1 grid pixel from the prototype")
     index.add_argument("--max-height-drift", type=float, default=0.2, help="abs log height difference, in body heights")
@@ -253,6 +482,25 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
     _pages_option(convert, "every indexed page")
     _decisions_option(convert)
     convert.set_defaults(handler=_scan_convert)
+    evaluate = commands.add_parser("scan-evaluate", help=f"{SCAN} score indexed pages against gold text; write cause-tagged misses")
+    evaluate.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt files holding the correct text")
+    _decisions_option(evaluate)
+    evaluate.set_defaults(handler=_scan_evaluate)
+    train_ocr = commands.add_parser("scan-train-ocr", help=f"{SCAN} fine-tune Tesseract on confirmed words, gold pages held out")
+    train_ocr.add_argument("--name", required=True, help="model name; written to files/<book>/state/ocr/<name>.traineddata")
+    train_ocr.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt gold pages, kept out of training")
+    train_ocr.add_argument("--iterations", type=int, default=3000, help="lstmtraining iterations")
+    train_ocr.add_argument("--base-model", type=existing_file, help="traineddata to start from; default tessdata/tel.traineddata")
+    train_ocr.add_argument("--langdata", type=Path, default=Path("files/tesseract-langdata"),
+                           help=f"folder holding Tesseract's {RADICAL_STROKE}; default files/tesseract-langdata")
+    _decisions_option(train_ocr)
+    train_ocr.set_defaults(handler=_scan_train_ocr)
+    disagreements = commands.add_parser("scan-disagreements",
+                                        help=f"{SCAN} sheet of words where our reading and OCR differ, grouped by pattern, for corrections")
+    disagreements.add_argument("--gold", type=gold_folder, required=True, help="folder of page-<number>.txt gold pages, kept off the sheet")
+    disagreements.add_argument("--top", type=int, default=200, help=f"words on the sheet, up to {PER_PATTERN} per pattern")
+    _decisions_option(disagreements)
+    disagreements.set_defaults(handler=_scan_disagreements)
     split = commands.add_parser("scan-split", help=f"{SCAN} find shape ids that hold two shapes and split them (report unless --apply)")
     _decisions_option(split)
     split.add_argument("--catalog", type=Path, help="default files/<book>/state/scan-catalog.npz")

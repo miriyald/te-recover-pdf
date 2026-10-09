@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anu_unicode.scan.catalog import MAX_THICK_BLOB, thick_blob
+from anu_unicode.scan.catalog import MAX_THICK_BLOB, Shape, ShapeCatalog, Thresholds, thick_blob
 from anu_unicode.scan.index import EQUALS, Occurrence
 from anu_unicode.scan.inference import Label, Source, WordEvidence, comparable_text, solve
 from anu_unicode.scan.ink import Bitmap
@@ -14,6 +14,16 @@ from anu_unicode.scan.word_ocr import WordKey
 SPLIT_AGREEMENT = 0.8
 SPLIT_WORDS = 5
 SPLIT_SHARE = 0.25
+MIXED = "mixed"
+MIXED_THRESHOLDS = Thresholds(distance=0.08, height_drift=0.2, aspect_drift=0.25)
+
+
+def subclusters(shapes: Mapping[Occurrence, Shape]) -> list[list[Occurrence]]:
+    catalog = ShapeCatalog(MIXED_THRESHOLDS)
+    groups: dict[int, list[Occurrence]] = defaultdict(list)
+    for item in sorted(shapes, key=lambda member: (member.page, member.bbox)):
+        groups[catalog.assign(shapes[item])].append(item)
+    return sorted(groups.values(), key=lambda group: (-len(group), group[0].page, group[0].bbox))
 
 
 @dataclass(frozen=True)

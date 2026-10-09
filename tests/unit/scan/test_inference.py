@@ -1,3 +1,4 @@
+from itertools import combinations, product
 from pathlib import Path
 
 from anu_unicode.scan.index import EQUALS, Occurrence
@@ -5,12 +6,14 @@ from anu_unicode.scan.inference import (
     Label,
     Source,
     WordEvidence,
+    candidates_for,
     comparable_text,
     infer,
     marks_of,
     read_labels,
     render,
     seed_labels,
+    solve,
     word_evidence,
     write_labels,
 )
@@ -28,6 +31,10 @@ def test_a_sequence_renders_through_the_converter_with_nothing_for_empty_pieces(
 
 def test_ocr_text_is_compared_without_quotes_spaces_or_joiners() -> None:
     assert comparable_text(" ‘గోచి’\n") == comparable_text("గోచి") == "గోచి"
+
+
+def test_spaces_inside_a_phrase_do_not_count_as_a_difference() -> None:
+    assert comparable_text("స్వస్య ఉపభోగః") == comparable_text("స్వస్యఉపభోగః")
 
 
 def test_an_unknown_piece_takes_the_only_label_that_reproduces_the_word() -> None:
@@ -87,6 +94,45 @@ def test_a_named_piece_and_its_recipe_let_the_host_be_solved() -> None:
 
     assert labels[1].name == "గ"
     assert labels[2].agreement == 1.0
+
+
+def test_a_word_with_punctuation_and_a_recipe_is_still_solved() -> None:
+    speller = Speller([Recipe(("pipe",), "।")])
+
+    assert solve(WordEvidence((1, 2, 3, 5), "కా,।"), {1: "క", 3: ",", 5: "pipe"}, [2], speller, frozenset()) == ("ా",)
+
+
+def test_an_unknown_piece_used_twice_in_a_word_is_solved() -> None:
+    assert solve(WordEvidence((1, 2, 1, 2), "కాకా"), {1: "క"}, [2], SPELLER, frozenset()) == ("ా",)
+
+
+def test_a_sign_before_its_consonant_is_solved_as_the_pre_base_form() -> None:
+    assert solve(WordEvidence((7, 1), "కె"), {1: "క"}, [7], SPELLER, frozenset()) == ("◌ె",)
+
+
+def test_a_word_ending_in_a_quote_is_solved_by_the_full_search() -> None:
+    assert solve(WordEvidence((1, 2, 3), comparable_text("కా’")), {1: "క", 3: "’"}, [2], SPELLER, frozenset()) == ("ా",)
+
+
+def _brute_solve(word: WordEvidence, names: dict[int, str], unknown: list[int], speller: Speller) -> tuple[str, ...] | None:
+    known = {shape_id: names[shape_id] for shape_id in set(word.shape_ids) if shape_id not in unknown}
+    fits = [option for option in product(candidates_for(word.text), repeat=len(unknown))
+            if render(word.shape_ids, {**known, **dict(zip(unknown, option))}, speller) == word.text]
+    if len(fits) > 1:
+        fits = [option for option in fits if NOTHING not in option]
+    return fits[0] if len(fits) == 1 else None
+
+
+def test_the_letter_filter_finds_exactly_what_the_full_search_finds() -> None:
+    speller = Speller([Recipe(("pipe",), "।"), Recipe(("ప", "o_tick"), "పో")])
+    words = [((1, 2, 3), {1: "క", 2: "ా", 3: "ము"}), ((4, 2, 1, 2), {4: "ప", 2: "ా", 1: "క"}), ((5, 1, 6), {5: "◌ె", 1: "క", 6: ","}),
+             ((4, 7, 8), {4: "ప", 7: "o_tick", 8: "pipe"}), ((1, 9, 3), {1: "క", 9: "్ర", 3: "ము"}), ((1, 10), {1: "క", 10: "’"})]
+    for shape_ids, names in words:
+        word = WordEvidence(shape_ids, render(shape_ids, names, speller))
+        for size in (1, 2):
+            for unknown in combinations(sorted(set(shape_ids)), size):
+                expected = _brute_solve(word, names, list(unknown), speller)
+                assert solve(word, names, list(unknown), speller, frozenset()) == expected, (shape_ids, unknown)
 
 
 def test_a_sign_drawn_before_its_consonant_takes_the_pre_base_form() -> None:

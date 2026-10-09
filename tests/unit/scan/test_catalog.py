@@ -1,9 +1,23 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
+from scipy import ndimage
 
-from anu_unicode.scan.catalog import CANVAS, ShapeCatalog, Thresholds, count_holes, load_catalog, shape_of, thick_difference
+from anu_unicode.scan.catalog import (
+    CANVAS,
+    GRID,
+    SHIFT_TOLERANCE,
+    GridPrototypes,
+    ShapeCatalog,
+    Thresholds,
+    count_holes,
+    load_catalog,
+    shape_of,
+    thick_difference,
+)
 from anu_unicode.scan.ink import Component
+from anu_unicode.scan.profile import HeightUnit
 from anu_unicode.scan.words import Band
 
 BODY = 50.0
@@ -113,6 +127,44 @@ def test_saved_catalog_keeps_ids_and_freezes_their_prototypes(tmp_path: Path) ->
     assert np.array_equal(loaded.prototype(ring_id), catalog.prototype(ring_id))
 
 
+def test_a_catalog_grown_past_its_capacity_keeps_every_prototype_through_save_and_load(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(THRESHOLDS)
+    random = np.random.default_rng(3)
+    blocks = [np.kron(random.random((10, 10)) > 0.5, np.ones((5, 5), dtype=bool)) for _ in range(100)]
+    shapes = [shape_of(_component(mask), Band.MAIN, BODY) for mask in blocks]
+    ids = [catalog.assign(shape) for shape in shapes]
+    catalog.save(tmp_path / "catalog.npz")
+
+    loaded = load_catalog(tmp_path / "catalog.npz")
+
+    assert len(set(ids)) > 64
+    assert all(np.array_equal(loaded.prototype(shape_id), catalog.prototype(shape_id)) for shape_id in set(ids))
+    assert [loaded.match(shape) for shape in shapes] == [catalog.match(shape) for shape in shapes]
+    with pytest.raises(IndexError):
+        catalog.prototype(len(catalog))
+
+
+def _reference_stray_share(grid: np.ndarray, prototypes: list[np.ndarray]) -> np.ndarray:
+    def far(mask: np.ndarray) -> np.ndarray:
+        return ndimage.distance_transform_edt(~mask).ravel() > SHIFT_TOLERANCE if mask.any() else np.ones(mask.size, dtype=bool)
+    pixels = grid.ravel().astype(np.float64)
+    bitmaps = np.array([prototype.ravel() for prototype in prototypes], dtype=np.float64)
+    own = np.array([far(prototype) for prototype in prototypes], dtype=np.float64) @ pixels
+    return np.asarray((own + bitmaps @ far(grid)) / (pixels.sum() + bitmaps.sum(axis=1)))
+
+
+def test_stray_share_matches_the_float_distance_map_formula() -> None:
+    random = np.random.default_rng(5)
+    blank = np.zeros((GRID, GRID), dtype=bool)
+    prototypes = [random.random((GRID, GRID)) > threshold for threshold in np.linspace(0.3, 0.97, 70)] + [blank]
+    grids = GridPrototypes.frozen(prototypes)
+    query = random.random((GRID, GRID)) > 0.8
+
+    shares = grids.stray_share(query, np.arange(len(prototypes)))
+
+    assert np.array_equal(shares, _reference_stray_share(query, prototypes))
+
+
 def test_shapes_split_off_an_id_become_a_new_id_after_the_frozen_ones(tmp_path: Path) -> None:
     catalog = ShapeCatalog(Thresholds(0.2, 0.2, 0.25))
     catalog.assign(shape_of(_component(_bar()), Band.MAIN, 50.0))
@@ -123,3 +175,21 @@ def test_shapes_split_off_an_id_become_a_new_id_after_the_frozen_ones(tmp_path: 
 
     assert new_id == 1
     assert frozen.match(shape_of(_component(_ring()), Band.MAIN, 50.0)) == 1
+
+
+def test_a_saved_catalog_remembers_the_height_unit_its_shapes_were_scaled_by(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(THRESHOLDS, shape_unit=HeightUnit.LETTER)
+    catalog.assign(shape_of(_component(_ring()), Band.MAIN, BODY))
+    catalog.save(tmp_path / "catalog.npz")
+
+    assert load_catalog(tmp_path / "catalog.npz").shape_unit == HeightUnit.LETTER
+
+
+def test_a_catalog_saved_before_units_were_recorded_is_median_scaled(tmp_path: Path) -> None:
+    catalog = ShapeCatalog(THRESHOLDS)
+    catalog.assign(shape_of(_component(_ring()), Band.MAIN, BODY))
+    catalog.save(tmp_path / "catalog.npz")
+    with np.load(tmp_path / "catalog.npz") as data:
+        np.savez(tmp_path / "old.npz", **{name: data[name] for name in data.files if name != "shape_unit"})
+
+    assert load_catalog(tmp_path / "old.npz").shape_unit == HeightUnit.MEDIAN

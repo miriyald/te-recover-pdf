@@ -1,6 +1,7 @@
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -8,6 +9,7 @@ from PIL import Image
 from scipy import ndimage
 
 from anu_unicode.scan.ink import Bitmap, Component
+from anu_unicode.scan.profile import HeightUnit
 from anu_unicode.scan.words import Band
 
 GRID = 48
@@ -18,14 +20,16 @@ PROTOTYPE_SHARE = 0.5
 SHIFT_TOLERANCE = 1.0
 MIN_HOLE_AREA = 0.005
 CANDIDATES = 8
-SHIFTS = tuple((rows, columns) for rows in (-1, 0, 1) for columns in (-1, 0, 1))
-THICK = np.ones((1, 3, 3), dtype=bool)
+SHIFTS = tuple(sorted(((rows, columns) for rows in (-1, 0, 1) for columns in (-1, 0, 1)), key=lambda shift: abs(shift[0]) + abs(shift[1])))
+THICK = np.ones((3, 3), dtype=bool)
 MAX_THICK_BLOB = 20
 BANDS = tuple(Band)
+PACKED = GRID * GRID // 64
 
 Floats = NDArray[np.float64]
 Integers = NDArray[np.int64]
 Canvases = NDArray[np.uint16]
+Words = NDArray[np.uint64]
 
 
 @dataclass(frozen=True)
@@ -69,21 +73,35 @@ def _largest_blob(thick: Bitmap) -> int:
     return int(np.bincount(labels.ravel())[1:].max()) if count else 0
 
 
-def thick_blob(canvas: Bitmap, prototype: Bitmap) -> int:
+def _thick_layers(canvas: Bitmap, prototype: Bitmap) -> Iterator[Bitmap]:
     ink = canvas | prototype
     rows, columns = np.flatnonzero(ink.any(axis=1)), np.flatnonzero(ink.any(axis=0))
     region = (slice(max(rows[0] - 2, 0), rows[-1] + 3), slice(max(columns[0] - 2, 0), columns[-1] + 3))
-    shifted = np.stack([np.roll(prototype, shift, axis=(0, 1))[region] for shift in SHIFTS])
-    thick = ndimage.binary_erosion(shifted ^ canvas[region], structure=THICK)
-    return min(_largest_blob(layer) for layer in thick)
+    for shift in SHIFTS:
+        difference = np.roll(prototype, shift, axis=(0, 1))[region] ^ canvas[region]
+        yield np.asarray(ndimage.binary_erosion(difference, structure=THICK), dtype=bool)
+
+
+def thick_blob(canvas: Bitmap, prototype: Bitmap) -> int:
+    return min(_largest_blob(layer) for layer in _thick_layers(canvas, prototype))
 
 
 def thick_difference(canvas: Bitmap, prototype: Bitmap) -> bool:
-    return thick_blob(canvas, prototype) > MAX_THICK_BLOB
+    return all(layer.sum() > MAX_THICK_BLOB and _largest_blob(layer) > MAX_THICK_BLOB for layer in _thick_layers(canvas, prototype))
 
 
-def _distance_map(grid: Bitmap) -> Floats:
-    return np.asarray(ndimage.distance_transform_edt(~grid), dtype=np.float64).ravel() if grid.any() else np.full(GRID * GRID, float(GRID))
+def _far(grid: Bitmap) -> Bitmap:
+    if not grid.any():
+        return np.ones(grid.shape, dtype=bool)
+    return np.asarray(ndimage.distance_transform_edt(~grid) > SHIFT_TOLERANCE, dtype=bool)
+
+
+def _packed(grid: Bitmap) -> Words:
+    return np.packbits(grid.ravel()).view(np.uint64)
+
+
+def _overlap(rows: Words, query: Words) -> Integers:
+    return np.bitwise_count(rows & query).sum(axis=1, dtype=np.int64)
 
 
 @dataclass(frozen=True)
@@ -93,54 +111,77 @@ class Thresholds:
     aspect_drift: float
 
 
+def _grown(rows: NDArray[Any], capacity: int) -> NDArray[Any]:
+    grown = np.zeros((capacity, *rows.shape[1:]), dtype=rows.dtype)
+    grown[:len(rows)] = rows
+    return grown
+
+
 @dataclass
 class GridPrototypes:
-    sums: Floats = field(default_factory=lambda: np.zeros((0, GRID * GRID)))
-    bitmaps: Floats = field(default_factory=lambda: np.zeros((0, GRID * GRID)))
-    distance_maps: Floats = field(default_factory=lambda: np.zeros((0, GRID * GRID)))
+    size: int = 0
+    _ink: Words = field(default_factory=lambda: np.zeros((0, PACKED), dtype=np.uint64))
+    _far: Words = field(default_factory=lambda: np.zeros((0, PACKED), dtype=np.uint64))
+    _inked: Integers = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
+    sums: dict[int, Floats] = field(default_factory=dict)
 
     @classmethod
-    def frozen(cls, bitmaps: Floats) -> "GridPrototypes":
-        distance_maps = np.array([_distance_map(bitmap.reshape(GRID, GRID) > 0) for bitmap in bitmaps]).reshape(-1, GRID * GRID)
-        return cls(np.zeros_like(bitmaps), bitmaps, distance_maps)
+    def frozen(cls, grids: Sequence[Bitmap]) -> "GridPrototypes":
+        prototypes = cls()
+        for grid in grids:
+            prototypes.add(grid)
+        return prototypes
+
+    @property
+    def ink(self) -> Words:
+        return self._ink[:self.size]
+
+    @property
+    def far(self) -> Words:
+        return self._far[:self.size]
+
+    @property
+    def inked(self) -> Integers:
+        return self._inked[:self.size]
 
     def add(self, grid: Bitmap) -> None:
-        self.sums = np.vstack([self.sums, np.zeros(GRID * GRID)])
-        self.bitmaps = np.vstack([self.bitmaps, grid.ravel().astype(np.float64)])
-        self.distance_maps = np.vstack([self.distance_maps, _distance_map(grid)])
+        if self.size == len(self._ink):
+            capacity = max(2 * self.size, 64)
+            self._ink = _grown(self._ink, capacity)
+            self._far = _grown(self._far, capacity)
+            self._inked = _grown(self._inked, capacity)
+        self.size += 1
+        self._store(self.size - 1, grid)
 
     def update(self, index: int, grid: Bitmap, count: float) -> None:
-        self.sums[index] += grid.ravel()
-        self.bitmaps[index] = self.sums[index] / count >= PROTOTYPE_SHARE
-        self.distance_maps[index] = _distance_map(self.bitmaps[index].reshape(GRID, GRID) > 0)
+        total = self.sums.setdefault(index, np.zeros(grid.shape))
+        total += grid
+        self._store(index, total / count >= PROTOTYPE_SHARE)
+
+    def _store(self, index: int, grid: Bitmap) -> None:
+        self.ink[index], self.far[index], self.inked[index] = _packed(grid), _packed(_far(grid)), int(grid.sum())
 
     def stray_share(self, grid: Bitmap, indices: Integers) -> Floats:
-        pixels = grid.ravel().astype(np.float64)
-        bitmaps = self.bitmaps[indices]
-        own_stray = (self.distance_maps[indices] > SHIFT_TOLERANCE) @ pixels
-        their_stray = bitmaps @ (_distance_map(grid) > SHIFT_TOLERANCE)
-        return np.asarray((own_stray + their_stray) / (pixels.sum() + bitmaps.sum(axis=1)), dtype=np.float64)
+        own_stray = _overlap(self.far[indices], _packed(grid))
+        their_stray = _overlap(self.ink[indices], _packed(_far(grid)))
+        return np.asarray((own_stray + their_stray) / (int(grid.sum()) + self.inked[indices]), dtype=np.float64)
 
     def bitmap(self, index: int) -> Bitmap:
-        return np.asarray(self.bitmaps[index].reshape(GRID, GRID) > 0, dtype=np.bool_)
+        return np.unpackbits(self.ink[index].view(np.uint8)).reshape(GRID, GRID).astype(bool)
 
 
 @dataclass
 class CanvasPrototypes:
-    sums: list[Canvases] = field(default_factory=list)
     bitmaps: list[Bitmap] = field(default_factory=list)
-
-    @classmethod
-    def frozen(cls, bitmaps: list[Bitmap]) -> "CanvasPrototypes":
-        return cls([np.zeros(CANVAS, dtype=np.uint16) for _ in bitmaps], bitmaps)
+    sums: dict[int, Canvases] = field(default_factory=dict)
 
     def add(self, canvas: Bitmap) -> None:
-        self.sums.append(np.zeros(CANVAS, dtype=np.uint16))
         self.bitmaps.append(canvas)
 
     def update(self, index: int, canvas: Bitmap, count: float) -> None:
-        self.sums[index] += canvas
-        self.bitmaps[index] = self.sums[index] / count >= PROTOTYPE_SHARE
+        total = self.sums.setdefault(index, np.zeros(CANVAS, dtype=np.uint16))
+        total += canvas
+        self.bitmaps[index] = total / count >= PROTOTYPE_SHARE
 
 
 @dataclass
@@ -154,6 +195,7 @@ class ShapeCatalog:
     holes: Integers = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     grids: GridPrototypes = field(default_factory=GridPrototypes)
     canvases: CanvasPrototypes = field(default_factory=CanvasPrototypes)
+    shape_unit: HeightUnit = HeightUnit.MEDIAN
 
     def __len__(self) -> int:
         return len(self.counts)
@@ -220,17 +262,20 @@ class ShapeCatalog:
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         canvases = np.packbits(np.array(self.canvases.bitmaps).reshape((-1, *CANVAS)), axis=2)
-        np.savez_compressed(path, prototypes=np.packbits(self.grids.bitmaps > 0, axis=1), canvases=canvases,
+        np.savez_compressed(path, prototypes=self.grids.ink.view(np.uint8), canvases=canvases,
                             heights=self.heights, aspects=self.aspects, bands=self.bands, holes=self.holes,
-                            thresholds=np.array([self.thresholds.distance, self.thresholds.height_drift, self.thresholds.aspect_drift]))
+                            thresholds=np.array([self.thresholds.distance, self.thresholds.height_drift, self.thresholds.aspect_drift]),
+                            shape_unit=np.array(self.shape_unit.value))
 
 
 def load_catalog(path: Path) -> ShapeCatalog:
     names = ("prototypes", "canvases", "heights", "aspects", "bands", "holes", "thresholds")
     with np.load(path) as data:
         arrays = {name: np.array(data[name]) for name in names}
-    grids = np.unpackbits(arrays["prototypes"], axis=1)[:, :GRID * GRID].astype(np.float64)
+        shape_unit = HeightUnit(str(data["shape_unit"])) if "shape_unit" in data.files else HeightUnit.MEDIAN
+    grids = np.unpackbits(arrays["prototypes"], axis=1)[:, :GRID * GRID].reshape(-1, GRID, GRID).astype(bool)
     canvases = list(np.unpackbits(arrays["canvases"], axis=2)[:, :, :CANVAS[1]].astype(bool))
     return ShapeCatalog(Thresholds(*(float(value) for value in arrays["thresholds"].tolist())), frozen=len(grids),
                         counts=np.zeros(len(grids)), heights=arrays["heights"], aspects=arrays["aspects"], bands=arrays["bands"],
-                        holes=arrays["holes"], grids=GridPrototypes.frozen(grids), canvases=CanvasPrototypes.frozen(canvases))
+                        holes=arrays["holes"], grids=GridPrototypes.frozen(list(grids)), canvases=CanvasPrototypes(canvases),
+                        shape_unit=shape_unit)
